@@ -16,7 +16,7 @@ async function loadStateFromServer() {
     try {
       return migrateState(await apiLoadPipeline());
     } catch (e) {
-      if (e.message !== "Unauthorized") console.error(e);
+      console.error(e);
       throw e;
     }
   }
@@ -84,31 +84,7 @@ async function saveState() {
   saveInFlight = null;
 }
 
-function currentUserName() {
-  return window.ITMEN_API?.user?.name || null;
-}
-
-function isAdmin() {
-  return window.ITMEN_API?.user?.role === "admin";
-}
-
-function updateUserBar() {
-  const el = document.getElementById("user-bar");
-  if (!el) return;
-  const u = window.ITMEN_API?.user;
-  if (!u) { el.innerHTML = ""; return; }
-  el.innerHTML = `
-    <span class="user-name">${escapeHtml(u.name)}</span>
-    <span class="badge ${u.role === "admin" ? "badge-hot" : "badge-ok"}">${u.role === "admin" ? "Admin" : "Менеджер"}</span>
-    <button class="btn btn-sm" id="btn-logout">Выход</button>`;
-  document.getElementById("btn-logout")?.addEventListener("click", () => apiLogout());
-}
-
 async function resetState() {
-  if (!isAdmin()) {
-    alert("Сброс доступен только администратору");
-    return;
-  }
   if (!confirm("Сбросить все данные к начальным?")) return;
   state = migrateState(structuredClone(window.ITMEN_INITIAL));
   await saveState();
@@ -678,7 +654,7 @@ function markScoreOverride(key) {
 }
 
 function emptyDeal() {
-  const defaultOwner = currentUserName() || state.lists?.owners?.[0] || "Аркадий Мерлейн";
+  const defaultOwner = state.lists?.owners?.[0] || "Аркадий Мерлейн";
   return {
     id: previewDealId(),
     customer: "",
@@ -807,8 +783,6 @@ async function saveDealModalAsync() {
     return;
   }
 
-  if (!isAdmin() && currentUserName()) deal.owner = currentUserName();
-
   if (editingDealIdx != null) state.deals[editingDealIdx] = deal;
   else {
     deal.id = consumeDealId();
@@ -868,8 +842,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (window.ITMEN_API?.enabled) {
     try {
       state = await loadStateFromServer();
-      updateUserBar();
     } catch {
+      alert("Не удалось загрузить данные с сервера");
       return;
     }
   } else {
@@ -898,8 +872,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll(".modal-overlay").forEach(m => {
     m.addEventListener("click", e => { if (e.target === m) m.classList.remove("open"); });
   });
-
-  if (!isAdmin()) document.getElementById("btn-reset")?.style.setProperty("display", "none");
 
   renderAll();
   navigate(location.hash.replace("#", "") || "panel");

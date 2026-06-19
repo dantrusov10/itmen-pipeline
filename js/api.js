@@ -1,8 +1,7 @@
-/* API-клиент — синхронизация с сервером */
+/* API-клиент — синхронизация с сервером (без авторизации) */
 window.ITMEN_API = {
   enabled: true,
   base: "",
-  user: null,
 };
 
 async function apiFetch(path, opts = {}) {
@@ -14,30 +13,13 @@ async function apiFetch(path, opts = {}) {
     },
     ...opts,
   });
-  if (res.status === 401) {
-    window.location.href = "/login";
-    throw new Error("Unauthorized");
-  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
 
-async function apiLogin(login, pin) {
-  return apiFetch("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ login, pin }),
-  });
-}
-
-async function apiLogout() {
-  await apiFetch("/api/auth/logout", { method: "POST" });
-  window.location.href = "/login";
-}
-
 async function apiLoadPipeline() {
-  const { state, user } = await apiFetch("/api/pipeline");
-  window.ITMEN_API.user = user;
+  const { state } = await apiFetch("/api/pipeline");
   return state;
 }
 
@@ -46,12 +28,6 @@ async function apiSavePipeline(state) {
     method: "PUT",
     body: JSON.stringify({ state }),
   });
-}
-
-async function apiGetMe() {
-  const { user } = await apiFetch("/api/auth/me");
-  window.ITMEN_API.user = user;
-  return user;
 }
 
 async function apiListManagers() {
