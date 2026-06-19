@@ -14,7 +14,9 @@ let saveInFlight = null;
 async function loadStateFromServer() {
   if (window.ITMEN_API?.enabled) {
     try {
-      return migrateState(await apiLoadPipeline());
+      const loaded = await apiLoadPipeline();
+      if (loaded) return migrateState(loaded);
+      return migrateState(structuredClone(window.ITMEN_INITIAL));
     } catch (e) {
       console.error(e);
       throw e;
@@ -70,7 +72,9 @@ async function saveState() {
     if (window.ITMEN_API?.enabled) {
       try {
         await apiSavePipeline(state);
-        showToast("Сохранено на сервере");
+        showToast(typeof apiBackendLabel === "function"
+          ? `Сохранено (${apiBackendLabel()})`
+          : "Сохранено на сервере");
       } catch (e) {
         alert("Ошибка сохранения: " + e.message);
         throw e;
@@ -313,7 +317,11 @@ function renderPanel(m) {
       </div>
     </div>` : ""}
 
-    <div class="note">${window.ITMEN_API?.enabled ? "Данные на сервере · автосохранение при изменениях." : "Данные сохраняются локально в браузере."} Каталог вендоров: ${catalogCountLabel?.() ?? "—"} позиций.</div>`;
+    <div class="note">${window.ITMEN_API?.backend === "gas"
+      ? "Данные в Google Таблице · автосохранение при изменениях."
+      : window.ITMEN_API?.enabled
+        ? "Данные на сервере · автосохранение при изменениях."
+        : "Данные сохраняются локально в браузере."} Каталог вендоров: ${catalogCountLabel?.() ?? "—"} позиций.</div>`;
 }
 
 function filterDeals(deals) {
