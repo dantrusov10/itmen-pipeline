@@ -4,7 +4,8 @@ const path = require("path");
 const multer = require("multer");
 const fs = require("fs");
 
-const { loadState, saveState, logAudit } = require("./db");
+const { initDb, loadState, saveState, logAudit } = require("./db");
+const { seedIfEmpty } = require("./seed");
 const { MANAGERS } = require("./owners");
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -22,12 +23,12 @@ function cleanState(raw) {
   return s;
 }
 
-function ensureState() {
-  let state = loadState();
+async function ensureState() {
+  let state = await loadState();
   if (!state) {
     try {
-      require("./seed.js");
-      state = loadState();
+      await seedIfEmpty();
+      state = await loadState();
     } catch (e) {
       console.error("Seed failed:", e.message);
     }
@@ -41,21 +42,31 @@ app.get("/api/managers", (_req, res) => {
   res.json(MANAGERS.map(m => ({ id: m.id, name: m.name, sheet: m.sheet })));
 });
 
-app.get("/api/pipeline", (_req, res) => {
-  const state = ensureState();
-  if (!state) return res.status(503).json({ error: "Данные не инициализированы. Запустите npm run seed" });
-  res.json({ state: cleanState(state) });
+app.get("/api/pipeline", async (_req, res) => {
+  try {
+    const state = await ensureState();
+    if (!state) return res.status(503).json({ error: "Данные не инициализированы" });
+    res.json({ state: cleanState(state) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Ошибка загрузки данных" });
+  }
 });
 
-app.put("/api/pipeline", (req, res) => {
+app.put("/api/pipeline", async (req, res) => {
   const incoming = req.body?.state;
   if (!incoming || !Array.isArray(incoming.deals)) {
     return res.status(400).json({ error: "Некорректное тело запроса" });
   }
 
-  const updatedAt = saveState(cleanState(incoming), "web");
-  logAudit("save_pipeline", "web", `${incoming.deals.length} deals`);
-  res.json({ ok: true, updatedAt });
+  try {
+    const updatedAt = await saveState(cleanState(incoming), "web");
+    await logAudit("save_pipeline", "web", `${incoming.deals.length} deals`);
+    res.json({ ok: true, updatedAt });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Ошибка сохранения" });
+  }
 });
 
 app.get("/api/export/template", (_req, res) => {
@@ -80,7 +91,15 @@ app.get("*", (req, res, next) => {
   res.sendFile(path.join(ROOT, "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`ITMen Pipeline → http://localhost:${PORT}`);
-  try { require("./seed.js"); } catch (e) { console.warn("Auto-seed:", e.message); }
+async function start() {
+  await initDb();
+  await seedIfEmpty();
+  app.listen(PORT, () => {
+    console.log(`ITMen Pipeline → http://localhost:${PORT}`);
+  });
+}
+
+start().catch(e => {
+  console.error("Failed to start:", e);
+  process.exit(1);
 });

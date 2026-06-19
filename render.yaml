@@ -1,0 +1,15 @@
+# Render.com — деплой из GitHub
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: itmen-pipeline
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false

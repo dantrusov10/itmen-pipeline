@@ -10,14 +10,21 @@ function readInitialState() {
   return JSON.parse(m[1]);
 }
 
-function seed() {
-  if (loadState()) {
+async function seedIfEmpty() {
+  if (await loadState()) {
     console.log("DB already has data — skip seed");
     return;
   }
   const state = readInitialState();
-  saveState(state, "seed");
+  await saveState(state, "seed");
   console.log("Seeded", state.deals?.length || 0, "deals");
 }
 
-seed();
+if (require.main === module) {
+  const { initDb } = require("./db");
+  initDb()
+    .then(() => seedIfEmpty())
+    .catch(e => { console.error(e); process.exit(1); });
+}
+
+module.exports = { seedIfEmpty, readInitialState };
