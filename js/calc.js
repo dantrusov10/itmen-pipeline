@@ -370,7 +370,7 @@ function categoryBadge(cat) {
 }
 
 function calcMetrics(deals) {
-  const d = deals.map(enrichDeal);
+  const d = deals.map(enrichDeal).filter(x => x.category !== "Отказ");
   const totalPipeline = d.reduce((s, x) => s + (x.amount || 0), 0);
   const weighted = d.reduce((s, x) => s + x.weighted, 0);
   const counts = { "Горячая": 0, "Тёплая": 0, "Наблюдение": 0, "Отказ": 0 };

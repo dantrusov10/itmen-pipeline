@@ -10,6 +10,27 @@ let state = null;
 let editingDealIdx = null;
 let modalSuggestion = null;
 let saveInFlight = null;
+let metricsCache = null;
+let activePage = "panel";
+
+function invalidateMetricsCache() {
+  metricsCache = null;
+}
+
+function getMetrics() {
+  if (!metricsCache) metricsCache = calcMetrics(state.deals);
+  return metricsCache;
+}
+
+function removeRejectedDeals(s) {
+  s.deals = (s.deals || []).filter(d => {
+    const m = migrateDeal({ ...d });
+    const score = calcDealScore(m.scores);
+    const cat = calcCategory(score, m.commitStatus, m.budgetStatus);
+    return cat !== "Отказ";
+  });
+  return s;
+}
 
 async function loadStateFromServer() {
   if (window.ITMEN_API?.enabled) {
@@ -63,7 +84,7 @@ function migrateState(s) {
     s.nextId = Math.max(0, ...nums, init.nextId || 0, 0) + 1;
   }
   syncScoringFromConfig(s);
-  return s;
+  return removeRejectedDeals(s);
 }
 
 async function saveState() {
@@ -85,6 +106,7 @@ async function saveState() {
         ? `Сохранено (${apiBackendLabel()})`
         : "Данные сохранены локально");
     }
+    invalidateMetricsCache();
   })();
   await saveInFlight;
   saveInFlight = null;
@@ -106,20 +128,28 @@ function showToast(msg) {
 }
 
 function navigate(page) {
+  activePage = page;
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav a").forEach(a => a.classList.remove("active"));
   document.getElementById("page-" + page)?.classList.add("active");
   document.querySelector(`.nav a[data-page="${page}"]`)?.classList.add("active");
   document.getElementById("page-title").textContent = PAGES[page]?.title || page;
+  document.body.classList.toggle("page-deals-active", page === "deals");
   location.hash = page;
   document.getElementById("sidebar")?.classList.remove("open");
+  renderActivePage();
+}
+
+function renderActivePage() {
+  const m = getMetrics();
+  if (activePage === "panel") renderPanel(m);
+  else if (activePage === "deals") renderDealsTable(m.deals);
+  else if (activePage === "scoring") renderScoring();
 }
 
 function renderAll() {
-  const metrics = calcMetrics(state.deals);
-  renderPanel(metrics);
-  renderDeals(metrics.deals);
-  renderScoring();
+  invalidateMetricsCache();
+  renderActivePage();
 }
 
 function metricCard(label, value, sub) {
@@ -326,74 +356,6 @@ function renderPanel(m) {
         : "Данные сохраняются локально в браузере."} Каталог вендоров: ${catalogCountLabel?.() ?? "—"} позиций.</div>`;
 }
 
-function filterDeals(deals) {
-  const cat = document.getElementById("deal-filter")?.value;
-  const q = document.getElementById("deal-quality-filter")?.value;
-  return deals.filter(d => {
-    if (cat && d.category !== cat) return false;
-    if (q === "incomplete" && d.quality !== "Неполный") return false;
-    if (q === "risk" && !d.riskFlag) return false;
-    return true;
-  });
-}
-
-function renderDeals(deals) {
-  const el = document.getElementById("page-deals");
-  if (!el) return;
-  el.innerHTML = `
-    <div style="margin-bottom:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
-      <button class="btn btn-primary" onclick="openDealModal()">+ Добавить сделку</button>
-      <label class="btn" style="cursor:pointer">⬆️ Импорт Excel<input type="file" id="btn-import-excel" accept=".xlsx,.xls" hidden></label>
-      <a class="btn" href="${window.ITMEN_API?.enabled ? "/api/export/template" : "ITMen_Pipeline_Шаблон_менеджеров.xlsx"}" ${window.ITMEN_API?.enabled ? "" : "download"}>⬇️ Шаблон Excel</a>
-      <select id="deal-filter" class="btn" onchange="renderAll()" style="width:auto">
-        <option value="">Все категории</option>
-        <option value="Горячая">Горячая</option>
-        <option value="Тёплая">Тёплая</option>
-        <option value="Наблюдение">Наблюдение</option>
-        <option value="Отказ">Отказ</option>
-      </select>
-      <select id="deal-quality-filter" class="btn" onchange="renderAll()" style="width:auto">
-        <option value="">Все</option>
-        <option value="incomplete">Только неполные</option>
-        <option value="risk">С флагом риска</option>
-      </select>
-    </div>
-    <div class="card"><div class="table-wrap"><table class="deals-table">
-      <thead><tr>
-        <th>ID</th><th>Клиент</th><th>Владелец</th>
-        <th>Ожид. сумма</th><th>Ожид. бюджет</th><th>Партнёр</th>
-        <th>План. бюджет</th><th>% проект</th><th>% пилот</th><th>Балл</th><th>Категория</th>
-        <th>Коммит</th><th>Качество</th><th>Риск</th><th>Задача до</th><th></th>
-      </tr></thead>
-      <tbody>${filterDeals(deals).map(d => {
-        const realIdx = state.deals.findIndex(x => x.id === d.id);
-        const cls = d.quality === "Неполный" ? "row-incomplete" : d.riskFlag ? "row-risk" : "";
-        const disc = d.clientDiscount ? `<br><small>−${d.clientDiscount}% клиенту</small>` : "";
-        return `<tr class="${cls}">
-          <td>${escapeHtml(d.id)}</td>
-          <td><strong>${escapeHtml(d.customer)}</strong><br><small>${escapeHtml(d.stage)}</small></td>
-          <td>${escapeHtml(d.owner)}</td>
-          <td class="num">${formatMoney(d.amount)}<br><small>${formatMoney(d.weighted)} взв.</small></td>
-          <td class="num">${formatMoney(d.expectedBudget || 0)}</td>
-          <td>${escapeHtml(d.partner || "—")}${d.partnerDiscount ? `<br><small>${d.partnerDiscount}% партн.</small>` : ""}</td>
-          <td>${escapeHtml(d.budgetPeriod || "—")}<br><small>${escapeHtml(d.budgetStatus)}${d.budgetPlannedMonth ? `<br>${["","Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"][d.budgetPlannedMonth] || ""} ${d.budgetPlannedYear || ""}` : ""}</small>${disc}</td>
-          <td class="num">${d.projectCompliancePct != null ? d.projectCompliancePct + "%" : "—"}</td>
-          <td class="num">${d.pilotCompliancePct != null ? d.pilotCompliancePct + "%" : "—"}</td>
-          <td class="num">${d.score ?? "—"}</td>
-          <td>${categoryBadge(d.category)}</td>
-          <td>${escapeHtml(d.commitLabel)}</td>
-          <td>${d.quality === "Неполный" ? '<span class="badge badge-warn">Неполный</span>' : '<span class="badge badge-ok">OK</span>'}</td>
-          <td>${d.riskFlag ? `<span class="badge badge-danger">${escapeHtml(d.riskFlag)}</span>` : "—"}</td>
-          <td>${escapeHtml(d.taskDue)}${d.daysTo != null ? `<br><small>${d.daysTo} дн.</small>` : ""}</td>
-          <td class="actions">
-            <button class="btn btn-sm" onclick="openDealModal(${realIdx})">✏️</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteDeal(${realIdx})">🗑</button>
-          </td>
-        </tr>`;
-      }).join("")}</tbody>
-    </table></div></div>`;
-}
-
 function renderScoring() {
   const el = document.getElementById("page-scoring");
   if (!el) return;
@@ -547,7 +509,26 @@ function renderScoreSection(deal, suggestion) {
     <div class="scores-panel">${cards}</div>`;
 }
 
+function ensureArchitectureLoaded() {
+  if (window.ITMEN_ARCHITECTURE) return Promise.resolve();
+  if (window._archLoadPromise) return window._archLoadPromise;
+  window._archLoadPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "js/architecture-data.js";
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Не удалось загрузить каталог вендоров"));
+    document.head.appendChild(s);
+  });
+  return window._archLoadPromise;
+}
+
 function openDealModal(idx) {
+  openDealModalAsync(idx).catch(e => alert(e.message));
+}
+
+async function openDealModalAsync(idx) {
+  await ensureArchitectureLoaded();
   editingDealIdx = idx ?? null;
   const raw = idx != null ? state.deals[idx] : emptyDeal();
   const d = migrateDeal(raw);
@@ -811,6 +792,7 @@ function deleteDeal(idx) {
 async function deleteDealAsync(idx) {
   if (!confirm("Удалить сделку " + state.deals[idx].id + "?")) return;
   state.deals.splice(idx, 1);
+  invalidateMetricsCache();
   await saveState();
   renderAll();
 }
@@ -874,11 +856,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btn-reset")?.addEventListener("click", resetState);
   document.getElementById("btn-export")?.addEventListener("click", exportJson);
   document.getElementById("btn-import")?.addEventListener("change", e => importJson(e.target));
-  document.getElementById("btn-import-excel")?.addEventListener("change", e => {
-    const f = e.target.files[0];
-    if (f) importExcelFile(f);
-    e.target.value = "";
-  });
   document.getElementById("menu-toggle")?.addEventListener("click", () =>
     document.getElementById("sidebar").classList.toggle("open"));
   document.querySelectorAll(".modal-overlay").forEach(m => {
@@ -888,7 +865,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderAll();
   navigate(location.hash.replace("#", "") || "panel");
 });
-
 window.openDealModal = openDealModal;
 window.saveDealModal = saveDealModal;
 window.deleteDeal = deleteDeal;
