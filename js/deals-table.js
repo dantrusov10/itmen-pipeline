@@ -75,8 +75,8 @@ const DEALS_TABLE_COLS = [
   {
     key: "budgetStatus",
     label: "Статус бюджета",
-    filter: "select",
-    filterOptions: () => (state?.lists?.budgetStatus || window.ITMEN_CONFIG?.budgetStatuses || []),
+    filter: "multiselect",
+    filterOptions: deals => resolveBudgetStatusFilterOptions(deals),
     get: d => d.budgetStatus || "Неизвестно",
     render(d) {
       return `<td><small>${escapeHtml(d.budgetStatus || "—")}</small></td>`;
@@ -96,8 +96,9 @@ const DEALS_TABLE_COLS = [
   {
     key: "commitStatus",
     label: "Статус коммита",
-    filter: "select",
-    filterOptions: () => (window.ITMEN_CONFIG?.commitStatuses || []).map(c => c.label),
+    filter: "multiselect",
+    msAlign: "right",
+    filterOptions: deals => resolveCommitStatusFilterOptions(deals),
     get: d => d.commitLabel || commitLabel(d.commitStatus),
     sortGet: d => d.commitLabel || commitLabel(d.commitStatus),
     render(d) {
@@ -169,6 +170,25 @@ function resolveBudgetPeriodFilterOptions(deals) {
   const all = [...base];
   [...new Set((deals || []).map(d => d.budgetPeriod).filter(Boolean))].forEach(s => {
     if (!all.includes(s)) all.push(s);
+  });
+  return all;
+}
+
+function resolveBudgetStatusFilterOptions(deals) {
+  const base = state?.lists?.budgetStatus || window.ITMEN_CONFIG?.budgetStatuses || [];
+  const all = [...base];
+  [...new Set((deals || []).map(d => d.budgetStatus).filter(Boolean))].forEach(s => {
+    if (!all.includes(s)) all.push(s);
+  });
+  return all;
+}
+
+function resolveCommitStatusFilterOptions(deals) {
+  const base = (window.ITMEN_CONFIG?.commitStatuses || []).map(c => c.label);
+  const all = [...base];
+  (deals || []).forEach(d => {
+    const label = d.commitLabel || commitLabel(d.commitStatus);
+    if (label && !all.includes(label)) all.push(label);
   });
   return all;
 }
@@ -254,6 +274,7 @@ function renderMultiselectFilter(col, deals) {
     <button type="button" class="deals-ms-toggle" data-col="${col.key}">${escapeHtml(label)} ▾</button>
     <div class="deals-ms-panel">
       <div class="deals-ms-actions">
+        <button type="button" class="deals-ms-all" data-col="${col.key}">Выбрать все</button>
         <button type="button" class="deals-ms-clear" data-col="${col.key}">Сбросить</button>
       </div>
       <div class="deals-ms-list">${checkboxes}</div>
@@ -419,6 +440,17 @@ function bindDealsTableEvents() {
       wrap?.querySelectorAll(".deals-ms-cb").forEach(cb => { cb.checked = false; });
       delete dealsTableColFilters[colKey];
       updateMultiselectToggleLabel(colKey);
+      updateDealsTableBody(getEnrichedDeals());
+      return;
+    }
+    const msAll = e.target.closest(".deals-ms-all");
+    if (msAll) {
+      e.preventDefault();
+      e.stopPropagation();
+      const colKey = msAll.dataset.col;
+      const wrap = msAll.closest(".deals-ms-filter");
+      wrap?.querySelectorAll(".deals-ms-cb").forEach(cb => { cb.checked = true; });
+      syncMultiselectFilter(colKey);
       updateDealsTableBody(getEnrichedDeals());
       return;
     }

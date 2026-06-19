@@ -12,7 +12,7 @@ let modalSuggestion = null;
 let saveInFlight = null;
 let metricsCache = null;
 let activePage = "panel";
-let dashboardFilters = { owner: "", category: "" };
+let dashboardFilters = { owner: "", category: "", budgetPeriod: [] };
 
 function invalidateMetricsCache() {
   metricsCache = null;
@@ -28,7 +28,69 @@ function getDashboardDeals() {
   if (dashboardFilters.category) {
     deals = deals.filter(d => enrichDeal(d).category === dashboardFilters.category);
   }
+  if (dashboardFilters.budgetPeriod?.length) {
+    const selected = new Set(dashboardFilters.budgetPeriod);
+    deals = deals.filter(d => selected.has(d.budgetPeriod || "Не определён"));
+  }
   return deals;
+}
+
+function dashBudgetPeriodOptions() {
+  const base = state?.lists?.budgetPeriods || window.ITMEN_CONFIG?.budgetPeriods || [];
+  const all = [...base];
+  (state?.deals || []).forEach(d => {
+    const p = d.budgetPeriod || "Не определён";
+    if (!all.includes(p)) all.push(p);
+  });
+  return all;
+}
+
+function renderDashMultiselect(key, options, selected) {
+  const sel = new Set(selected || []);
+  const label = sel.size ? `${sel.size} выбр.` : "Все";
+  const checkboxes = options.map(o =>
+    `<label class="deals-ms-opt">
+      <input type="checkbox" class="deals-ms-cb dash-ms-cb" data-dash-key="${key}" value="${escapeHtml(o)}"${sel.has(o) ? " checked" : ""}>
+      <span>${escapeHtml(o)}</span>
+    </label>`
+  ).join("");
+  return `<div class="deals-ms-filter dash-ms-filter" data-dash-key="${key}">
+    <button type="button" class="deals-ms-toggle dash-ms-toggle" data-dash-key="${key}">${escapeHtml(label)} ▾</button>
+    <div class="deals-ms-panel">
+      <div class="deals-ms-actions">
+        <button type="button" class="deals-ms-all dash-ms-all" data-dash-key="${key}">Выбрать все</button>
+        <button type="button" class="deals-ms-clear dash-ms-clear" data-dash-key="${key}">Сбросить</button>
+      </div>
+      <div class="deals-ms-list">${checkboxes}</div>
+    </div>
+  </div>`;
+}
+
+function updateDashMultiselectLabel(key) {
+  const wrap = document.querySelector(`.dash-ms-filter[data-dash-key="${key}"]`);
+  if (!wrap) return;
+  const checked = wrap.querySelectorAll(".dash-ms-cb:checked");
+  const btn = wrap.querySelector(".dash-ms-toggle");
+  if (btn) btn.textContent = (checked.length ? `${checked.length} выбр.` : "Все") + " ▾";
+}
+
+function syncDashMultiselect(key) {
+  const wrap = document.querySelector(`.dash-ms-filter[data-dash-key="${key}"]`);
+  if (!wrap) return;
+  const checked = [...wrap.querySelectorAll(".dash-ms-cb:checked")].map(cb => cb.value);
+  dashboardFilters[key] = checked.length ? checked : [];
+  updateDashMultiselectLabel(key);
+}
+
+function closeDashMultiselectPanels(except) {
+  document.querySelectorAll(".dash-ms-filter.open").forEach(el => {
+    if (except && el === except) return;
+    el.classList.remove("open");
+  });
+}
+
+function dashFiltersActive() {
+  return dashboardFilters.owner || dashboardFilters.category || dashboardFilters.budgetPeriod?.length;
 }
 
 function getDashboardMetrics() {
@@ -169,19 +231,15 @@ function renderPanel(m) {
   const n = m.pipelineCount ?? m.deals?.length ?? 0;
   const owners = state.lists?.owners || [];
   const categories = ["Горячая", "Тёплая", "Наблюдение", "Отказ"];
-  const scorecard = [
-    ["Взвешенный прогноз", formatMoney(m.weighted), "> 0", kpiStatus(m.weighted, 1, "money")],
-    ["Доля горячих", formatPct(m.hotShare), "≥ 20%", kpiStatus(m.hotShare, 0.2, "pct")],
-    ["Коммиты ≥ протокол", m.strongCommits, "≥ 3", kpiStatus(m.strongCommits, 3, "count")],
-    ["Полнота паспортов", formatPct(m.passportCompleteness), "≥ 90%", kpiStatus(m.passportCompleteness, 0.9, "pct")],
-  ];
   const maxCommit = Math.max(1, ...Object.values(m.commitCounts));
   const maxStage = Math.max(1, ...(m.stageFunnel || []).map(x => x.count));
+  const maxPeriod = Math.max(1, ...(m.byBudgetPeriod || []).map(x => x.count));
   const catTotal = Math.max(1, n);
   const catColors = { "Горячая": "#c0392b", "Тёплая": "#e67e22", "Наблюдение": "#3498db", "Отказ": "#95a5a6" };
 
   const ownerRows = Object.entries(m.byOwner || {}).sort((a, b) => b[1].weighted - a[1].weighted);
   const budgetRows = Object.entries(m.byBudget || {}).sort((a, b) => b[1].pipeline - a[1].pipeline);
+  const periodOptions = dashBudgetPeriodOptions();
 
   el.innerHTML = `
     <div class="dashboard-filters">
@@ -197,7 +255,10 @@ function renderPanel(m) {
           ${categories.map(c => `<option value="${escapeHtml(c)}" ${dashboardFilters.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
         </select>
       </label>
-      ${dashboardFilters.owner || dashboardFilters.category ? `<button type="button" class="btn btn-sm" id="dash-clear-filters">Сбросить фильтры</button>` : ""}
+      <label>Срок
+        ${renderDashMultiselect("budgetPeriod", periodOptions, dashboardFilters.budgetPeriod)}
+      </label>
+      ${dashFiltersActive() ? `<button type="button" class="btn btn-sm" id="dash-clear-filters">Сбросить фильтры</button>` : ""}
     </div>
     <div class="grid grid-4" style="margin-bottom:1rem">
       ${metricCard("Сделок в пайплайне", n)}
@@ -214,7 +275,7 @@ function renderPanel(m) {
     <div class="grid grid-4" style="margin-bottom:1.5rem">
       ${metricCard("Неполные паспорта", m.incomplete, "требуют данных")}
       ${metricCard("Флаги риска", m.riskFlags, "критичные")}
-      ${metricCard("Устарели", m.stale, "> 14 дней без обновления")}
+      ${metricCard("Ср. лояльность", m.avgLoyalty != null ? m.avgLoyalty + " / 5" : "—", m.highLoyalty ? `высокая (≥4): ${m.highLoyalty}` : "оценка в паспорте")}
       ${metricCard("Наблюдение / Отказ", (m.counts["Наблюдение"]||0) + (m.counts["Отказ"]||0))}
     </div>
 
@@ -233,12 +294,17 @@ function renderPanel(m) {
 
     <div class="grid grid-2" style="margin-bottom:1.5rem">
       <div class="card">
-        <div class="card-header">KPI пайплайна Q3</div>
-        <div class="card-body table-wrap">
-          <table class="scorecard-table">
-            <thead><tr><th>KPI</th><th>Значение</th><th>Цель</th><th></th></tr></thead>
-            <tbody>${scorecard.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join("")}</tbody>
-          </table>
+        <div class="card-header">Сроки бюджета</div>
+        <div class="card-body">
+          <div class="funnel">
+            ${(m.byBudgetPeriod || []).map(({ period, count, pipeline }) => `
+              <div class="funnel-row">
+                <span class="name" title="${escapeHtml(period)}">${escapeHtml(period.length > 22 ? period.slice(0, 20) + "…" : period)}</span>
+                <div class="bar-wrap"><div class="bar" style="width:${(count / maxPeriod) * 100}%;background:#805ad5"></div></div>
+                <span class="count">${count}</span>
+                <span class="count muted" style="min-width:4.5rem;text-align:right">${formatMoney(pipeline)}</span>
+              </div>`).join("") || "<div class='muted'>Нет данных по срокам</div>"}
+          </div>
         </div>
       </div>
       <div class="card">
@@ -345,7 +411,6 @@ function renderPanel(m) {
             const issues = [];
             if (d.quality === "Неполный") issues.push("Неполный паспорт");
             if (d.daysTo != null && d.daysTo < 0) issues.push("Просрочена задача");
-            if (d.riskFlag === "Устарела (>14 дн.)") issues.push("Устарела");
             if (d.category === "Горячая" && d.budgetStatus === "Нет бюджета") issues.push("Горячая без бюджета");
             if (d.riskFlag && !issues.includes(d.riskFlag)) issues.push(d.riskFlag);
             const idx = state.deals.findIndex(x => x.id === d.id);
@@ -376,8 +441,50 @@ function renderPanel(m) {
     dashboardFilters.category = e.target.value;
     renderPanel(getDashboardMetrics());
   });
+  el.addEventListener("click", e => {
+    const toggle = e.target.closest(".dash-ms-toggle");
+    if (toggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const wrap = toggle.closest(".dash-ms-filter");
+      const open = wrap?.classList.contains("open");
+      closeDashMultiselectPanels();
+      if (wrap && !open) wrap.classList.add("open");
+      return;
+    }
+    const clearBtn = e.target.closest(".dash-ms-clear");
+    if (clearBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = clearBtn.dataset.dashKey;
+      const wrap = clearBtn.closest(".dash-ms-filter");
+      wrap?.querySelectorAll(".dash-ms-cb").forEach(cb => { cb.checked = false; });
+      dashboardFilters[key] = [];
+      updateDashMultiselectLabel(key);
+      renderPanel(getDashboardMetrics());
+      return;
+    }
+    const allBtn = e.target.closest(".dash-ms-all");
+    if (allBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = allBtn.dataset.dashKey;
+      const wrap = allBtn.closest(".dash-ms-filter");
+      wrap?.querySelectorAll(".dash-ms-cb").forEach(cb => { cb.checked = true; });
+      syncDashMultiselect(key);
+      renderPanel(getDashboardMetrics());
+      return;
+    }
+    if (!e.target.closest(".dash-ms-filter")) closeDashMultiselectPanels();
+  });
+  el.addEventListener("change", e => {
+    if (e.target.classList.contains("dash-ms-cb")) {
+      syncDashMultiselect(e.target.dataset.dashKey);
+      renderPanel(getDashboardMetrics());
+    }
+  });
   document.getElementById("dash-clear-filters")?.addEventListener("click", () => {
-    dashboardFilters = { owner: "", category: "" };
+    dashboardFilters = { owner: "", category: "", budgetPeriod: [] };
     renderPanel(getDashboardMetrics());
   });
 }

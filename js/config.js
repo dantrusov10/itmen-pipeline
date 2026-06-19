@@ -171,7 +171,6 @@ window.ITMEN_CONFIG = {
     { id: "timing", label: "Сроки сдвигаются" },
     { id: "technical", label: "Технический gap" },
     { id: "complex", label: "Неясен контур проекта" },
-    { id: "stale", label: "Долго нет активности" },
     { id: "other", label: "Другое" },
   ],
 

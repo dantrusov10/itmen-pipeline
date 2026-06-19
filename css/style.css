@@ -568,6 +568,10 @@ body.page-deals-active .deals-table-hint {
   gap: .25rem;
   font-size: .78rem;
   color: var(--muted);
+  min-width: 0;
+}
+.dashboard-filters .deals-ms-filter {
+  min-width: 10rem;
 }
 .dash-filter-select {
   min-width: 11rem;
@@ -658,20 +662,27 @@ body.page-deals-active .deals-table-hint {
 .deals-ms-filter.open .deals-ms-panel { display: flex; flex-direction: column; }
 .deals-ms-actions {
   display: flex;
-  justify-content: flex-end;
-  padding: .35rem .5rem;
+  justify-content: space-between;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem .45rem;
   border-bottom: 1px solid #f0f0f0;
   background: #f8fafc;
   flex-shrink: 0;
 }
+.deals-ms-all,
 .deals-ms-clear {
-  font-size: .65rem;
-  padding: .1rem .35rem;
+  font-size: .62rem;
+  line-height: 1.2;
+  padding: .15rem .25rem;
   border: none;
   background: none;
   color: #2563eb;
   cursor: pointer;
+  white-space: nowrap;
 }
+.deals-ms-all:hover,
+.deals-ms-clear:hover { text-decoration: underline; }
 .deals-ms-list {
   overflow-y: auto;
   overflow-x: hidden;

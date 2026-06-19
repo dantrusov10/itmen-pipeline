@@ -73,6 +73,7 @@ function migrateDeal(deal) {
   if (d.risk && !d.riskComment) d.riskComment = d.risk;
   if (!d.nextStepType) d.nextStepType = "discovery";
   if (!d.riskType) d.riskType = "none";
+  if (d.riskType === "stale") d.riskType = "none";
   if (!d.scoreReasons) d.scoreReasons = {};
   if (!d.scoreHistory) d.scoreHistory = [];
   if (!d.scoresOverridden) d.scoresOverridden = {};
@@ -190,7 +191,6 @@ function calcDataQuality(deal) {
 function calcRiskFlag(deal, category, daysSinceUpdate, daysToTask) {
   if (!deal.id) return "";
   if (category === "Горячая" && deal.budgetStatus === "Нет бюджета") return "Горячая без бюджета";
-  if (daysSinceUpdate != null && daysSinceUpdate > 14) return "Устарела (>14 дн.)";
   if (daysToTask != null && daysToTask < 0) return "Просрочена ближайшая задача";
   if (deal.riskType && deal.riskType !== "none") {
     return riskLabel(deal.riskType);
@@ -420,8 +420,7 @@ function calcMetrics(deals) {
   const scores = all.filter(x => x.score != null).map(x => x.score);
   const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
   const incomplete = all.filter(x => x.quality === "Неполный").length;
-  const stale = all.filter(x => x.riskFlag === "Устарела (>14 дн.)").length;
-  const riskFlags = all.filter(x => x.riskFlag && x.riskFlag !== "Устарела (>14 дн.)").length;
+  const riskFlags = all.filter(x => x.riskFlag).length;
   const confirmedBudget = all.filter(x => x.budgetStatus === "Подтверждён").length;
   const confirmedBudgetSum = all.filter(x => x.budgetStatus === "Подтверждён").reduce((s, x) => s + (x.expectedAmount || 0), 0);
   const commits = window.ITMEN_CONFIG?.commitStatuses || [];
@@ -468,6 +467,25 @@ function calcMetrics(deals) {
     byBudget[b].pipeline += x.expectedAmount || 0;
   });
 
+  const periodOrder = state?.lists?.budgetPeriods || window.ITMEN_CONFIG?.budgetPeriods || [];
+  const byPeriodMap = {};
+  all.forEach(x => {
+    const p = x.budgetPeriod || "Не определён";
+    if (!byPeriodMap[p]) byPeriodMap[p] = { count: 0, pipeline: 0, weighted: 0 };
+    byPeriodMap[p].count++;
+    byPeriodMap[p].pipeline += x.expectedAmount || 0;
+    if (isWeightedDeal(x.score, x.category)) byPeriodMap[p].weighted += x.expectedAmount || 0;
+  });
+  const byBudgetPeriod = [...periodOrder, ...Object.keys(byPeriodMap).filter(p => !periodOrder.includes(p))]
+    .filter(p => byPeriodMap[p])
+    .map(period => ({ period, ...byPeriodMap[period] }));
+
+  const loyaltyVals = all.map(x => x.scores?.loyalty).filter(v => v != null && v > 0);
+  const avgLoyalty = loyaltyVals.length
+    ? Math.round((loyaltyVals.reduce((a, b) => a + b, 0) / loyaltyVals.length) * 10) / 10
+    : null;
+  const highLoyalty = all.filter(x => (x.scores?.loyalty || 0) >= 4).length;
+
   const segmentLabels = Object.fromEntries((window.ITMEN_CONFIG?.techSegments || []).map(s => [s.id, s.label]));
   const seekingCounts = {};
   all.forEach(x => (x.techResearch?.seekingSegments || []).forEach(seg => {
@@ -485,7 +503,6 @@ function calcMetrics(deals) {
   const attention = all.filter(x =>
     x.quality === "Неполный" ||
     (x.daysTo != null && x.daysTo < 0) ||
-    x.riskFlag === "Устарела (>14 дн.)" ||
     (x.category === "Горячая" && x.budgetStatus === "Нет бюджета")
   ).slice(0, 12);
 
@@ -493,19 +510,13 @@ function calcMetrics(deals) {
   const inPilot = all.filter(x => pilotStages.includes(x.stage)).length;
 
   return {
-    totalPipeline, weighted, counts, avgScore, incomplete, stale, riskFlags,
+    totalPipeline, weighted, counts, avgScore, incomplete, riskFlags,
     confirmedBudget, confirmedBudgetSum, commitCounts, strongCommits, hotShare,
-    passportCompleteness, byOwner, stageFunnel, byBudget, topSegments,
+    passportCompleteness, byOwner, stageFunnel, byBudget, byBudgetPeriod,
+    avgLoyalty, highLoyalty, topSegments,
     avgProductPct, avgPilotPct, topDeals, attention, inPilot, deals: all,
     pipelineCount: all.length,
   };
-}
-
-function kpiStatus(actual, target, type) {
-  if (type === "money") return actual > 0 ? "🟢" : "🔴";
-  if (type === "pct") return actual >= target ? "🟢" : actual >= target * 0.5 ? "🟡" : "🔴";
-  if (type === "count") return actual >= target ? "🟢" : actual >= 1 ? "🟡" : "🔴";
-  return actual >= target ? "🟢" : "🔴";
 }
 
 function escapeHtml(s) {
