@@ -154,7 +154,7 @@ function renderPanel(m) {
   const el = document.getElementById("page-panel");
   if (!el) return;
   const f = state.pipelineFocus || {};
-  const n = m.deals.length;
+  const n = m.pipelineCount ?? m.deals.length;
   const scorecard = [
     ["Взвешенный прогноз", formatMoney(m.weighted), "> 0", kpiStatus(m.weighted, 1, "money")],
     ["Доля горячих", formatPct(m.hotShare), "≥ 20%", kpiStatus(m.hotShare, 0.2, "pct")],

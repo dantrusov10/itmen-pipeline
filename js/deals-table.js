@@ -1,8 +1,9 @@
-/* Таблица сделок — компактный вид, сортировка + общий поиск */
+/* Таблица сделок — сортировка и фильтрация по каждому столбцу */
 const DEALS_TABLE_COLS = [
   {
     key: "customer",
     label: "Клиент / стадия",
+    filter: "text",
     get: d => `${d.customer} ${d.stage}`,
     render(d) {
       return `<td class="col-customer">
@@ -14,6 +15,7 @@ const DEALS_TABLE_COLS = [
   {
     key: "owner",
     label: "Владелец",
+    filter: "text",
     get: d => d.owner,
     render(d) {
       return `<td>${escapeHtml(d.owner)}</td>`;
@@ -23,6 +25,7 @@ const DEALS_TABLE_COLS = [
     key: "amount",
     label: "Ожид. сумма",
     num: true,
+    filter: "text",
     get: d => d.amount,
     render(d) {
       return `<td class="num col-amount">
@@ -35,6 +38,7 @@ const DEALS_TABLE_COLS = [
     key: "score",
     label: "Балл",
     num: true,
+    filter: "text",
     get: d => d.score,
     render(d) {
       return `<td class="num">${d.score ?? "—"}</td>`;
@@ -43,6 +47,8 @@ const DEALS_TABLE_COLS = [
   {
     key: "category",
     label: "Категория",
+    filter: "select",
+    filterOptions: ["Горячая", "Тёплая", "Наблюдение", "Отказ"],
     get: d => d.category,
     render(d) {
       return `<td>${categoryBadge(d.category)}</td>`;
@@ -51,6 +57,8 @@ const DEALS_TABLE_COLS = [
   {
     key: "taskDue",
     label: "Задача до",
+    date: true,
+    filter: "text",
     get: d => d.taskDue,
     render(d) {
       const days = d.daysTo != null
@@ -62,7 +70,9 @@ const DEALS_TABLE_COLS = [
   {
     key: "risk",
     label: "Риск",
-    get: d => d.riskFlag || d.quality,
+    filter: "select",
+    filterOptions: ["Неполный", "Устарела (>14 дн.)", "Горячая без бюджета", "—"],
+    get: d => d.riskFlag || (d.quality === "Неполный" ? "Неполный" : "—"),
     render(d) {
       if (d.riskFlag) {
         return `<td><span class="badge badge-danger badge-compact" title="${escapeHtml(d.riskFlag)}">${escapeHtml(d.riskFlag.length > 18 ? d.riskFlag.slice(0, 16) + "…" : d.riskFlag)}</span></td>`;
@@ -76,6 +86,7 @@ const DEALS_TABLE_COLS = [
 ];
 
 let dealsTableSort = { key: "amount", dir: "desc" };
+let dealsTableColFilters = {};
 let dealsTableSearch = "";
 let dealsTableBound = false;
 
@@ -85,14 +96,39 @@ function dealCellText(col, d) {
   return String(v);
 }
 
-function applyDealsTableFilters(deals) {
-  const cat = document.getElementById("deal-filter")?.value;
-  const q = document.getElementById("deal-quality-filter")?.value;
-  let rows = deals;
-  if (cat) rows = rows.filter(d => d.category === cat);
-  if (q === "incomplete") rows = rows.filter(d => d.quality === "Неполный");
-  if (q === "risk") rows = rows.filter(d => d.riskFlag);
+function colSortValue(col, d) {
+  const v = col.get(d);
+  if (col.num) {
+    if (v == null || v === "") return null;
+    return +v;
+  }
+  if (col.date) return v || "";
+  return dealCellText(col, d).toLowerCase();
+}
 
+function matchColFilter(col, d, filterVal) {
+  const f = (filterVal || "").trim();
+  if (!f) return true;
+  if (col.filter === "select") {
+    const cell = dealCellText(col, d);
+    if (f === "—") return !cell || cell === "—";
+    return cell === f || (f === "Неполный" && d.quality === "Неполный" && !d.riskFlag);
+  }
+  if (col.num) {
+    const raw = dealCellText(col, d).replace(/\s/g, "");
+    const fv = f.replace(/\s/g, "");
+    if (/^\d+$/.test(fv)) return raw.includes(fv);
+    return raw.toLowerCase().includes(fv.toLowerCase());
+  }
+  return dealCellText(col, d).toLowerCase().includes(f.toLowerCase());
+}
+
+function applyDealsTableFilters(deals) {
+  let rows = deals;
+  for (const col of DEALS_TABLE_COLS) {
+    const f = dealsTableColFilters[col.key];
+    if (f) rows = rows.filter(d => matchColFilter(col, d, f));
+  }
   const search = (dealsTableSearch || "").trim().toLowerCase();
   if (search) {
     rows = rows.filter(d =>
@@ -106,15 +142,34 @@ function sortDealsTableRows(deals) {
   const col = DEALS_TABLE_COLS.find(c => c.key === dealsTableSort.key) || DEALS_TABLE_COLS[2];
   const dir = dealsTableSort.dir === "asc" ? 1 : -1;
   return [...deals].sort((a, b) => {
-    const av = col.get(a);
-    const bv = col.get(b);
+    const av = colSortValue(col, a);
+    const bv = colSortValue(col, b);
     if (col.num) {
-      const an = av == null || av === "" ? -Infinity : +av;
-      const bn = bv == null || bv === "" ? -Infinity : +bv;
+      const an = av == null ? -Infinity : av;
+      const bn = bv == null ? -Infinity : bv;
       return (an - bn) * dir;
     }
-    return dealCellText(col, a).toLowerCase().localeCompare(dealCellText(col, b).toLowerCase(), "ru") * dir;
+    if (col.date) {
+      const ad = av || "";
+      const bd = bv || "";
+      if (!ad && !bd) return 0;
+      if (!ad) return 1 * dir;
+      if (!bd) return -1 * dir;
+      return ad.localeCompare(bd) * dir;
+    }
+    return String(av).localeCompare(String(bv), "ru") * dir;
   });
+}
+
+function renderColFilter(col) {
+  const val = escapeHtml(dealsTableColFilters[col.key] || "");
+  if (col.filter === "select") {
+    const opts = (col.filterOptions || []).map(o =>
+      `<option value="${escapeHtml(o)}" ${dealsTableColFilters[col.key] === o ? "selected" : ""}>${escapeHtml(o)}</option>`
+    ).join("");
+    return `<select class="deals-col-filter" data-col="${col.key}"><option value="">Все</option>${opts}</select>`;
+  }
+  return `<input type="search" class="deals-col-filter" data-col="${col.key}" placeholder="Фильтр…" value="${val}">`;
 }
 
 function renderDealsTableRow(d) {
@@ -129,6 +184,18 @@ function renderDealsTableRow(d) {
   </tr>`;
 }
 
+function updateDealsTableSortMarks() {
+  document.querySelectorAll("#deals-table th[data-sort]").forEach(el => {
+    const key = el.dataset.sort;
+    const col = DEALS_TABLE_COLS.find(c => c.key === key);
+    const active = key === dealsTableSort.key;
+    el.classList.toggle("sorted-asc", active && dealsTableSort.dir === "asc");
+    el.classList.toggle("sorted-desc", active && dealsTableSort.dir === "desc");
+    const mark = active ? (dealsTableSort.dir === "asc" ? " ▲" : " ▼") : "";
+    el.innerHTML = escapeHtml(col?.label || key) + mark;
+  });
+}
+
 function updateDealsTableBody(deals) {
   const tbody = document.getElementById("deals-tbody");
   const meta = document.getElementById("deals-table-meta");
@@ -141,29 +208,43 @@ function updateDealsTableBody(deals) {
 function bindDealsTableEvents() {
   if (dealsTableBound) return;
   dealsTableBound = true;
-  document.getElementById("page-deals")?.addEventListener("click", e => {
+  const page = document.getElementById("page-deals");
+  page?.addEventListener("click", e => {
     const th = e.target.closest("th[data-sort]");
     if (!th) return;
+    e.preventDefault();
     const key = th.dataset.sort;
     if (dealsTableSort.key === key) {
       dealsTableSort.dir = dealsTableSort.dir === "asc" ? "desc" : "asc";
     } else {
-      dealsTableSort = { key, dir: key === "amount" || key === "score" ? "desc" : "asc" };
+      dealsTableSort = { key, dir: (DEALS_TABLE_COLS.find(c => c.key === key)?.num ? "desc" : "asc") };
     }
-    document.querySelectorAll("#deals-table th[data-sort]").forEach(el => {
-      el.classList.toggle("sorted-asc", el.dataset.sort === dealsTableSort.key && dealsTableSort.dir === "asc");
-      el.classList.toggle("sorted-desc", el.dataset.sort === dealsTableSort.key && dealsTableSort.dir === "desc");
-    });
+    updateDealsTableSortMarks();
     updateDealsTableBody(getEnrichedDeals());
   });
-  document.getElementById("page-deals")?.addEventListener("input", e => {
+  page?.addEventListener("input", e => {
     if (e.target.id === "deals-global-search") {
       dealsTableSearch = e.target.value;
       updateDealsTableBody(getEnrichedDeals());
     }
+    if (e.target.classList.contains("deals-col-filter") && e.target.tagName === "INPUT") {
+      dealsTableColFilters[e.target.dataset.col] = e.target.value;
+      updateDealsTableBody(getEnrichedDeals());
+    }
   });
-  document.getElementById("page-deals")?.addEventListener("change", e => {
-    if (e.target.id === "deal-filter" || e.target.id === "deal-quality-filter") {
+  page?.addEventListener("change", e => {
+    if (e.target.classList.contains("deals-col-filter") && e.target.tagName === "SELECT") {
+      dealsTableColFilters[e.target.dataset.col] = e.target.value;
+      updateDealsTableBody(getEnrichedDeals());
+    }
+  });
+  page?.addEventListener("click", e => {
+    if (e.target.id === "deals-clear-filters") {
+      dealsTableColFilters = {};
+      dealsTableSearch = "";
+      const gs = document.getElementById("deals-global-search");
+      if (gs) gs.value = "";
+      document.querySelectorAll(".deals-col-filter").forEach(el => { el.value = ""; });
       updateDealsTableBody(getEnrichedDeals());
     }
   });
@@ -181,27 +262,19 @@ function renderDealsTable(deals) {
     <div class="deals-toolbar">
       <button class="btn btn-primary" onclick="openDealModal()">+ Добавить</button>
       <label class="btn" style="cursor:pointer">⬆️ Excel<input type="file" id="btn-import-excel" accept=".xlsx,.xls" hidden></label>
-      <input type="search" id="deals-global-search" class="deals-global-search" placeholder="Поиск по клиенту, владельцу, стадии…" value="${escapeHtml(dealsTableSearch)}">
-      <select id="deal-filter" class="btn" style="width:auto">
-        <option value="">Все категории</option>
-        <option value="Горячая">Горячая</option>
-        <option value="Тёплая">Тёплая</option>
-        <option value="Наблюдение">Наблюдение</option>
-        <option value="Отказ">Отказ</option>
-      </select>
-      <select id="deal-quality-filter" class="btn" style="width:auto">
-        <option value="">Все</option>
-        <option value="incomplete">Неполные</option>
-        <option value="risk">С риском</option>
-      </select>
+      <input type="search" id="deals-global-search" class="deals-global-search" placeholder="Быстрый поиск по всем столбцам…" value="${escapeHtml(dealsTableSearch)}">
+      <button type="button" class="btn btn-sm" id="deals-clear-filters">Сбросить фильтры</button>
       <span class="deals-table-meta" id="deals-table-meta"></span>
     </div>
     <div class="deals-table-shell">
       <table class="deals-table deals-table-compact" id="deals-table">
         <thead>
           <tr>${DEALS_TABLE_COLS.map(c =>
-            `<th data-sort="${c.key}" class="sortable">${escapeHtml(c.label)}${sortMark(c.key)}</th>`
+            `<th data-sort="${c.key}" class="sortable" title="Сортировка: клик — по возрастанию/убыванию">${escapeHtml(c.label)}${sortMark(c.key)}</th>`
           ).join("")}<th class="col-actions"></th></tr>
+          <tr class="deals-filter-row">${DEALS_TABLE_COLS.map(c =>
+            `<th>${renderColFilter(c)}</th>`
+          ).join("")}<th></th></tr>
         </thead>
         <tbody id="deals-tbody"></tbody>
       </table>
