@@ -542,7 +542,10 @@ function ensureArchitectureLoaded() {
     const s = document.createElement("script");
     s.src = "js/architecture-data.js";
     s.async = true;
-    s.onload = () => resolve();
+    s.onload = () => {
+      window._itmenCatalogCache = null;
+      resolve();
+    };
     s.onerror = () => reject(new Error("Не удалось загрузить каталог вендоров"));
     document.head.appendChild(s);
   });

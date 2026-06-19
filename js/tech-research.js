@@ -16,15 +16,32 @@ function getSegmentDef(segId) {
   return (window.ITMEN_CONFIG?.techSegments || []).find(s => s.id === segId);
 }
 
+const VENDOR_PRESET_OPTIONS = [
+  { key: "__preset__|||not_implemented", vendor: "Не было реализовано", product: "—", label: "Не было реализовано", preset: true },
+  { key: "__preset__|||excel", vendor: "Excel", product: "—", label: "Excel", preset: true },
+];
+
+function getVendorPresetOptions() {
+  return VENDOR_PRESET_OPTIONS;
+}
+
+function findCatalogItem(key) {
+  if (!key) return null;
+  const preset = VENDOR_PRESET_OPTIONS.find(x => x.key === key);
+  if (preset) return preset;
+  return getGlobalCatalog().find(x => x.key === key);
+}
+
 function getGlobalCatalog() {
-  if (window._itmenCatalogCache) return window._itmenCatalogCache;
   const arch = window.ITMEN_ARCHITECTURE;
-  if (arch?.globalCatalog?.length) {
+  if (!arch) return [];
+  if (window._itmenCatalogCache) return window._itmenCatalogCache;
+  if (arch.globalCatalog?.length) {
     window._itmenCatalogCache = arch.globalCatalog;
     return window._itmenCatalogCache;
   }
   const map = {};
-  (arch?.zones || []).forEach(z => (z.classes || []).forEach(cls => (cls.catalog || []).forEach(v => {
+  (arch.zones || []).forEach(z => (z.classes || []).forEach(cls => (cls.catalog || []).forEach(v => {
     const key = `${v.vendor}|||${v.product}`;
     if (!map[key]) map[key] = { ...v, key, label: `${v.vendor} — ${v.product}`, classes: [] };
     if (!map[key].classes.includes(cls.name)) map[key].classes.push(cls.name);
@@ -34,8 +51,9 @@ function getGlobalCatalog() {
 }
 
 function catalogCountLabel() {
-  const n = window.ITMEN_ARCHITECTURE?.catalogCount || getGlobalCatalog().length;
-  return n;
+  if (window.ITMEN_ARCHITECTURE?.catalogCount) return window.ITMEN_ARCHITECTURE.catalogCount;
+  const n = getGlobalCatalog().length;
+  return n || "—";
 }
 
 function getCatalogForSegment(segId) {
@@ -50,14 +68,25 @@ function getCatalogForSegment(segId) {
 
 function searchVendorCatalog(query, segId, limit = 50) {
   const ql = (query || "").trim().toLowerCase();
-  let list = getCatalogForSegment(segId);
-  if (!ql) return list.slice(0, limit);
-  const matched = list.filter(x =>
-    x.label.toLowerCase().includes(ql) ||
-    x.vendor.toLowerCase().includes(ql) ||
-    x.product.toLowerCase().includes(ql)
-  );
-  return matched.slice(0, limit);
+  const presets = getVendorPresetOptions();
+  const presetMatches = ql
+    ? presets.filter(x =>
+      x.label.toLowerCase().includes(ql) ||
+      x.vendor.toLowerCase().includes(ql) ||
+      x.product.toLowerCase().includes(ql)
+    )
+    : presets;
+  const presetKeys = new Set(presetMatches.map(x => x.key));
+  let list = getCatalogForSegment(segId).filter(x => !presetKeys.has(x.key));
+  const catalogMatches = ql
+    ? list.filter(x =>
+      x.label.toLowerCase().includes(ql) ||
+      x.vendor.toLowerCase().includes(ql) ||
+      x.product.toLowerCase().includes(ql)
+    )
+    : list;
+  const restLimit = Math.max(0, limit - presetMatches.length);
+  return [...presetMatches, ...catalogMatches.slice(0, restLimit)];
 }
 
 function migrateReviewedProducts(tr) {
@@ -339,23 +368,36 @@ function syncTechSegmentPanels() {
   if (comp) comp.innerHTML = segs.map(id => renderSegmentCompetitorBlock(id, prev.competitorEntries[id])).join("");
 }
 
+function renderVendorDropdownOptions(results) {
+  if (!results.length) {
+    return `<div class="vendor-opt muted">Не найдено — введите вендор/продукт вручную ниже</div>`;
+  }
+  return results.map(v =>
+    `<div class="vendor-opt${v.preset ? " vendor-opt-preset" : ""}" data-key="${encodeURIComponent(v.key)}" onmousedown="selectVendorOpt(this)">
+      <span>${escapeHtml(v.label)}</span>
+      <small>${v.preset ? "быстрый выбор" : `${escapeHtml(v.country || "")}${(v.classes || []).length ? " · " + escapeHtml(v.classes[0]) : ""}`}</small>
+    </div>`
+  ).join("");
+}
+
 function onVendorSearch(inp) {
   const picker = inp.closest(".vendor-picker");
   if (!picker) return;
-  const segId = picker.dataset.seg;
-  const dd = picker.querySelector(".vendor-dropdown");
-  const results = searchVendorCatalog(inp.value, segId);
-  if (!results.length) {
-    dd.innerHTML = `<div class="vendor-opt muted">Не найдено — введите вендор/продукт вручную ниже</div>`;
-  } else {
-    dd.innerHTML = results.map(v =>
-      `<div class="vendor-opt" data-key="${encodeURIComponent(v.key)}" onmousedown="selectVendorOpt(this)">
-        <span>${escapeHtml(v.label)}</span>
-        <small>${escapeHtml(v.country || "")}${(v.classes || []).length ? " · " + escapeHtml(v.classes[0]) : ""}</small>
-      </div>`
-    ).join("");
+  const run = () => {
+    const segId = picker.dataset.seg;
+    const dd = picker.querySelector(".vendor-dropdown");
+    const results = searchVendorCatalog(inp.value, segId);
+    dd.innerHTML = renderVendorDropdownOptions(results);
+    dd.classList.add("open");
+  };
+  if (window.ensureArchitectureLoaded && !window.ITMEN_ARCHITECTURE) {
+    window.ensureArchitectureLoaded().then(() => {
+      window._itmenCatalogCache = null;
+      run();
+    }).catch(() => run());
+    return;
   }
-  dd.classList.add("open");
+  run();
 }
 
 function hideVendorDropdownDelayed(inp) {
@@ -369,7 +411,7 @@ function selectVendorOpt(el) {
   const key = decodeURIComponent(el.dataset.key || "");
   const picker = el.closest(".vendor-picker");
   if (!picker || !key) return;
-  const item = getGlobalCatalog().find(x => x.key === key);
+  const item = findCatalogItem(key);
   if (!item) return;
   picker.querySelector(".vendor-search").value = item.label;
   picker.querySelector(".seg-vendor").value = item.vendor;

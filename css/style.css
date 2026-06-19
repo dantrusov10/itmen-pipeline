@@ -660,6 +660,8 @@ textarea { min-height: 60px; resize: vertical; }
   border-bottom: 1px solid #f0f0f0;
 }
 .vendor-opt:hover { background: #f7fafc; }
+.vendor-opt-preset { background: #f0f7ff; font-weight: 600; }
+.vendor-opt-preset:hover { background: #e3efff; }
 .vendor-opt span { display: block; }
 .vendor-opt small { color: var(--muted); font-size: .68rem; }
 
