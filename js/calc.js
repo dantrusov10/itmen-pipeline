@@ -335,7 +335,7 @@ function enrichDeal(deal) {
   const quality = calcDataQuality(d);
   const riskFlag = calcRiskFlag(d, category, daysSince, daysTo);
   const expectedAmount = Number(d.amount) || 0;
-  const weighted = expectedAmount * prob;
+  const weighted = score != null && score >= 50 ? expectedAmount : 0;
   return {
     ...d, score, computedProb, prob, category, daysSince, daysTo, quality, riskFlag, weighted,
     expectedAmount,
@@ -347,15 +347,15 @@ function enrichDeal(deal) {
   };
 }
 
-/** Сброс расширенных полей паспорта (бюджет, коммит, боли, риски, тех. блок) */
+/** Сброс расширенных полей паспорта — менеджеры заполняют вручную */
 function clearDealExtendedFields(deal) {
   const d = migrateDeal({ ...deal });
+  d.manualProb = 0;
+  d.taskDue = "";
   d.budgetPeriod = "Не определён";
   d.budgetStatus = "Неизвестно";
   d.budgetPlannedMonth = null;
   d.budgetPlannedYear = null;
-  d.budgetAmount = 0;
-  d.expectedBudget = 0;
   d.commitStatus = "none";
   d.pains = "";
   d.nextStepType = "discovery";
@@ -371,7 +371,10 @@ function clearDealExtendedFields(deal) {
     d.scores.budget = 1;
     d.scores.technical = 0;
     d.scores.fit = 0;
+    d.scores.timing = 0;
     d.scores.competitive = 0;
+    d.scores.access = 0;
+    d.scores.commercial = 0;
   }
   if (d.scoreReasons) {
     d.scoreReasons.commit = "Статус коммита: Нет подтверждения";
@@ -379,6 +382,9 @@ function clearDealExtendedFields(deal) {
     d.scoreReasons.technical = "Не заполнено";
     d.scoreReasons.fit = "Не заполнено";
     d.scoreReasons.competitive = "Не заполнено";
+    d.scoreReasons.timing = "Не заполнено";
+    d.scoreReasons.access = "Оценивается вручную";
+    d.scoreReasons.commercial = "Не заполнено";
   }
   return d;
 }
@@ -399,9 +405,10 @@ function categoryBadge(cat) {
 }
 
 function calcMetrics(deals) {
-  const d = deals.map(enrichDeal).filter(x => x.category !== "Отказ");
-  const totalPipeline = d.reduce((s, x) => s + (x.expectedAmount || 0), 0);
-  const weighted = d.reduce((s, x) => s + (x.weighted || 0), 0);
+  const all = deals.map(enrichDeal);
+  const totalPipeline = all.reduce((s, x) => s + (x.expectedAmount || 0), 0);
+  const weighted = all.filter(x => x.score != null && x.score >= 50).reduce((s, x) => s + (x.expectedAmount || 0), 0);
+  const d = all.filter(x => x.category !== "Отказ");
   const counts = { "Горячая": 0, "Тёплая": 0, "Наблюдение": 0, "Отказ": 0 };
   d.forEach(x => { if (x.category) counts[x.category] = (counts[x.category] || 0) + 1; });
   const scores = d.filter(x => x.score != null).map(x => x.score);
@@ -425,7 +432,7 @@ function calcMetrics(deals) {
     if (!byOwner[o]) byOwner[o] = { count: 0, pipeline: 0, weighted: 0, hot: 0, warm: 0, scores: [] };
     byOwner[o].count++;
     byOwner[o].pipeline += x.expectedAmount || 0;
-    byOwner[o].weighted += x.weighted || 0;
+    byOwner[o].weighted += x.score != null && x.score >= 50 ? (x.expectedAmount || 0) : 0;
     if (x.category === "Горячая") byOwner[o].hot++;
     if (x.category === "Тёплая") byOwner[o].warm++;
     if (x.score != null) byOwner[o].scores.push(x.score);
@@ -468,7 +475,7 @@ function calcMetrics(deals) {
   const avgProductPct = productPcts.length ? Math.round(productPcts.reduce((a, b) => a + b, 0) / productPcts.length) : null;
   const avgPilotPct = pilotPcts.length ? Math.round(pilotPcts.reduce((a, b) => a + b, 0) / pilotPcts.length) : null;
 
-  const topDeals = [...d].sort((a, b) => (b.weighted || 0) - (a.weighted || 0)).slice(0, 10);
+  const topDeals = [...all].sort((a, b) => (b.weighted || 0) - (a.weighted || 0) || (b.expectedAmount || 0) - (a.expectedAmount || 0)).slice(0, 10);
   const attention = d.filter(x =>
     x.quality === "Неполный" ||
     (x.daysTo != null && x.daysTo < 0) ||

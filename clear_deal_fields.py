@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Очистить расширенные поля во всех сделках и сохранить в Google Таблицу."""
+"""Очистить поля паспорта сделок (менеджеры заполняют вручную) и сохранить в GAS."""
 
 import json
 import re
@@ -33,14 +33,35 @@ def empty_tech():
     }
 
 
+def base_scores():
+    return {
+        "loyalty": 0, "commit": 0, "budget": 1, "fit": 0, "timing": 0,
+        "competitive": 0, "access": 0, "technical": 0, "commercial": 0,
+    }
+
+
+def base_score_reasons():
+    return {
+        "loyalty": "Оценивается только вручную",
+        "commit": "Статус коммита: Нет подтверждения",
+        "budget": "Статус бюджета неизвестен",
+        "fit": "Не заполнено",
+        "timing": "Не заполнено",
+        "competitive": "Не заполнено",
+        "access": "Оценивается вручную",
+        "technical": "Не заполнено",
+        "commercial": "Не заполнено",
+    }
+
+
 def clear_deal(d):
     d = dict(d)
+    d["manualProb"] = 0
+    d["taskDue"] = ""
     d["budgetPeriod"] = "Не определён"
     d["budgetStatus"] = "Неизвестно"
     d["budgetPlannedMonth"] = None
     d["budgetPlannedYear"] = None
-    d["budgetAmount"] = 0
-    d["expectedBudget"] = 0
     d["commitStatus"] = "none"
     d["pains"] = ""
     d["nextStepType"] = "discovery"
@@ -48,22 +69,8 @@ def clear_deal(d):
     d["riskType"] = "none"
     d["riskComment"] = ""
     d["techResearch"] = empty_tech()
-    scores = dict(d.get("scores") or {})
-    scores["commit"] = 0
-    scores["budget"] = 1
-    scores["technical"] = 0
-    scores["fit"] = 0
-    scores["competitive"] = 0
-    d["scores"] = scores
-    reasons = dict(d.get("scoreReasons") or {})
-    reasons.update({
-        "commit": "Статус коммита: Нет подтверждения",
-        "budget": "Статус бюджета неизвестен",
-        "technical": "Не заполнено",
-        "fit": "Не заполнено",
-        "competitive": "Не заполнено",
-    })
-    d["scoreReasons"] = reasons
+    d["scores"] = base_scores()
+    d["scoreReasons"] = base_score_reasons()
     return d
 
 
@@ -81,7 +88,7 @@ def main():
     state = fetch_state(url)
     state["deals"] = [clear_deal(d) for d in state.get("deals", [])]
     print(push_state(url, state))
-    print(f"Cleared extended fields in {len(state['deals'])} deals")
+    print(f"Cleared passport fields in {len(state['deals'])} deals")
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ const DEALS_TABLE_COLS = [
     render(d) {
       return `<td class="num col-amount">
         ${formatMoney(d.amount)}
-        <div class="cell-sub">${formatMoney(d.weighted)} взв.</div>
+        <div class="cell-sub">${d.weighted ? formatMoney(d.weighted) + " взв." : "—"}</div>
       </td>`;
     },
   },

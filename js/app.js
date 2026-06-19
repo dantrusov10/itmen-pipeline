@@ -173,7 +173,7 @@ function renderPanel(m) {
     <div class="grid grid-4" style="margin-bottom:1rem">
       ${metricCard("Сделок в пайплайне", n)}
       ${metricCard("Общий пайплайн", formatMoney(m.totalPipeline), "сумма ожидаемых сумм")}
-      ${metricCard("Взвешенный прогноз", formatMoney(m.weighted), m.avgScore != null ? `ср. балл ${m.avgScore} · от ожид. суммы` : "от ожидаемой суммы")}
+      ${metricCard("Взвешенный прогноз", formatMoney(m.weighted), "ожид. сумма при скоринге ≥ 50%")}
       ${metricCard("Подтв. бюджет", m.confirmedBudget, formatMoney(m.confirmedBudgetSum))}
     </div>
     <div class="grid grid-4" style="margin-bottom:1rem">

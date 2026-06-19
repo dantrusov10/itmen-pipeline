@@ -326,6 +326,46 @@ def suggest_scores(deal):
     return scores, reasons
 
 
+def empty_tech():
+    return {
+        "seekingSegments": [],
+        "asIsStack": {},
+        "changePains": {},
+        "competitorEntries": {},
+        "projectTasks": [],
+        "productRequirementsPct": None,
+        "pilotRequirementsPct": None,
+    }
+
+
+def base_scores():
+    return {
+        "loyalty": 0,
+        "commit": 0,
+        "budget": 1,
+        "fit": 0,
+        "timing": 0,
+        "competitive": 0,
+        "access": 0,
+        "technical": 0,
+        "commercial": 0,
+    }
+
+
+def base_score_reasons():
+    return {
+        "loyalty": "Оценивается только вручную",
+        "commit": "Статус коммита: Нет подтверждения",
+        "budget": "Статус бюджета неизвестен",
+        "fit": "Не заполнено",
+        "timing": "Не заполнено",
+        "competitive": "Не заполнено",
+        "access": "Оценивается вручную",
+        "technical": "Не заполнено",
+        "commercial": "Не заполнено",
+    }
+
+
 def row_to_deal(row, idx):
     customer = clean(row.get("Компания")) or clean(row.get("Название сделки"))
     if not customer:
@@ -336,14 +376,10 @@ def row_to_deal(row, idx):
     turnover = parse_num(row.get("Оборот сделки"))
     amount = budget or 0
     expected = turnover or 0
-
-    segs = segments_from_product(row.get("Продукт ИТМен") or row.get("Продукт Сфера"))
-    tr = build_tech_research(row, segs)
-    pains = build_pains(row)
-    notes = build_notes(row)
     owner = map_owner(row.get("Ответственный"))
-    budget_status = infer_budget_status(stage, amount, expected)
-    reg_date = parse_date(row.get("Регистрация до даты"))
+    last_update = parse_date(row.get("Дата изменения")) or parse_date(row.get("Дата создания")) or datetime.now().strftime("%Y-%m-%d")
+    scores = base_scores()
+    reasons = base_score_reasons()
 
     deal = {
         "id": f"D-{idx:03d}",
@@ -357,38 +393,28 @@ def row_to_deal(row, idx):
         "partner": map_partner(row.get("Партнер"), row.get("Дистрибьютор")),
         "partnerDiscount": int(parse_num(row.get("Маржа партнера в %"))) if row.get("Маржа партнера в %") not in (None, "") else 0,
         "clientDiscount": int(parse_num(row.get("Процент скидки клиенту в %"))) if row.get("Процент скидки клиенту в %") not in (None, "") else 0,
-        "manualProb": parse_prob(row.get("Шанс закрытия в %")),
-        "taskDue": parse_date(row.get("Ближайшая задача")) or parse_date(row.get("Дата создания")) or datetime.now().strftime("%Y-%m-%d"),
-        "budgetPeriod": budget_period_from_tags(row.get("Теги сделки")),
-        "budgetStatus": budget_status,
+        "manualProb": 0,
+        "taskDue": "",
+        "budgetPeriod": "Не определён",
+        "budgetStatus": "Неизвестно",
         "budgetPlannedMonth": None,
         "budgetPlannedYear": None,
-        "pains": pains,
+        "pains": "",
         "capabilities": clean(row.get("Presale")),
         "dml": "Не определён",
-        "nextStepType": STAGE_NEXT.get(stage, "discovery"),
-        "nextStepComment": notes,
+        "nextStepType": "discovery",
+        "nextStepComment": "",
         "riskType": "none",
         "riskComment": "",
         "commitStatus": "none",
-        "lastUpdate": parse_date(row.get("Дата изменения")) or parse_date(row.get("Дата создания")) or datetime.now().strftime("%Y-%m-%d"),
+        "lastUpdate": last_update,
         "amoId": int(parse_num(row.get("ID"))) if row.get("ID") else None,
-        "techResearch": tr,
+        "techResearch": empty_tech(),
+        "scores": scores,
+        "scoreReasons": reasons,
+        "scoreHistory": [{"date": last_update, "source": "amocrm_import", "scores": dict(scores)}],
+        "scoresOverridden": {},
     }
-
-    if reg_date and budget_status == "Планируется согласование":
-        try:
-            d = datetime.strptime(reg_date, "%Y-%m-%d")
-            deal["budgetPlannedMonth"] = d.month
-            deal["budgetPlannedYear"] = d.year
-        except ValueError:
-            pass
-
-    scores, reasons = suggest_scores(deal)
-    deal["scores"] = scores
-    deal["scoreReasons"] = reasons
-    deal["scoreHistory"] = [{"date": deal["lastUpdate"], "source": "amocrm_import", "scores": dict(scores)}]
-    deal["scoresOverridden"] = {}
     return deal
 
 
