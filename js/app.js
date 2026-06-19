@@ -12,7 +12,7 @@ let modalSuggestion = null;
 let saveInFlight = null;
 let metricsCache = null;
 let activePage = "panel";
-let dashboardFilters = { owner: "", category: "", budgetPeriod: [], stage: [] };
+let dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [] };
 const INACTIVE_OWNERS = ["Павел Витков"];
 let dashboardEventsBound = false;
 
@@ -26,9 +26,13 @@ function getEnrichedDeals() {
 
 function getDashboardDeals() {
   let deals = state?.deals || [];
-  if (dashboardFilters.owner) deals = deals.filter(d => d.owner === dashboardFilters.owner);
-  if (dashboardFilters.category) {
-    deals = deals.filter(d => enrichDeal(d).category === dashboardFilters.category);
+  if (dashboardFilters.owner?.length) {
+    const selected = new Set(dashboardFilters.owner);
+    deals = deals.filter(d => selected.has(d.owner));
+  }
+  if (dashboardFilters.category?.length) {
+    const selected = new Set(dashboardFilters.category);
+    deals = deals.filter(d => selected.has(enrichDeal(d).category));
   }
   if (dashboardFilters.budgetPeriod?.length) {
     const selected = new Set(dashboardFilters.budgetPeriod);
@@ -69,6 +73,17 @@ function dashBudgetPeriodOptions() {
     if (!all.includes(p)) all.push(p);
   });
   return all;
+}
+
+function dashCategoryOptions() {
+  return ["Горячая", "Тёплая", "Наблюдение", "Отказ"];
+}
+
+function renderDashFilterField(title, multiselectHtml) {
+  return `<div class="dash-filter-field">
+    <span class="dash-filter-label">${escapeHtml(title)}</span>
+    ${multiselectHtml}
+  </div>`;
 }
 
 function renderDashMultiselect(key, options, selected) {
@@ -116,7 +131,7 @@ function closeDashMultiselectPanels(except) {
 }
 
 function dashFiltersActive() {
-  return dashboardFilters.owner || dashboardFilters.category
+  return dashboardFilters.owner?.length || dashboardFilters.category?.length
     || dashboardFilters.budgetPeriod?.length || dashboardFilters.stage?.length;
 }
 
@@ -127,16 +142,6 @@ function bindDashboardEvents() {
   if (!el) return;
 
   el.addEventListener("change", e => {
-    if (e.target.id === "dash-filter-owner") {
-      dashboardFilters.owner = e.target.value;
-      renderPanel(getDashboardMetrics());
-      return;
-    }
-    if (e.target.id === "dash-filter-category") {
-      dashboardFilters.category = e.target.value;
-      renderPanel(getDashboardMetrics());
-      return;
-    }
     if (e.target.classList.contains("dash-ms-cb")) {
       syncDashMultiselect(e.target.dataset.dashKey);
       renderPanel(getDashboardMetrics());
@@ -145,7 +150,7 @@ function bindDashboardEvents() {
 
   el.addEventListener("click", e => {
     if (e.target.id === "dash-clear-filters") {
-      dashboardFilters = { owner: "", category: "", budgetPeriod: [], stage: [] };
+      dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [] };
       renderPanel(getDashboardMetrics());
       return;
     }
@@ -330,39 +335,24 @@ function renderPanel(m) {
   const el = document.getElementById("page-panel");
   if (!el) return;
   const n = m.pipelineCount ?? m.deals?.length ?? 0;
-  const owners = getDashboardOwners();
-  const categories = ["Горячая", "Тёплая", "Наблюдение", "Отказ"];
+  const ownerOptions = getDashboardOwners();
+  const categoryOptions = dashCategoryOptions();
+  const periodOptions = dashBudgetPeriodOptions();
+  const stageOptions = dashStageOptions();
   const maxCommit = Math.max(1, ...Object.values(m.commitCounts));
   const maxStage = Math.max(1, ...(m.stageFunnel || []).map(x => x.count));
   const maxPeriod = Math.max(1, ...(m.byBudgetPeriod || []).map(x => x.count));
   const catTotal = Math.max(1, n);
   const catColors = { "Горячая": "#c0392b", "Тёплая": "#e67e22", "Наблюдение": "#3498db", "Отказ": "#95a5a6" };
-
   const ownerRows = Object.entries(m.byOwner || {}).sort((a, b) => b[1].weighted - a[1].weighted);
   const budgetRows = Object.entries(m.byBudget || {}).sort((a, b) => b[1].pipeline - a[1].pipeline);
-  const periodOptions = dashBudgetPeriodOptions();
-  const stageOptions = dashStageOptions();
 
   el.innerHTML = `
     <div class="dashboard-filters">
-      <label>Ответственный
-        <select id="dash-filter-owner" class="dash-filter-select">
-          <option value="">Все</option>
-          ${owners.map(o => `<option value="${escapeHtml(o)}" ${dashboardFilters.owner === o ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
-        </select>
-      </label>
-      <label>Категория (порог)
-        <select id="dash-filter-category" class="dash-filter-select">
-          <option value="">Все</option>
-          ${categories.map(c => `<option value="${escapeHtml(c)}" ${dashboardFilters.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
-        </select>
-      </label>
-      <label>Стадия
-        ${renderDashMultiselect("stage", stageOptions, dashboardFilters.stage)}
-      </label>
-      <label>Срок
-        ${renderDashMultiselect("budgetPeriod", periodOptions, dashboardFilters.budgetPeriod)}
-      </label>
+      ${renderDashFilterField("Ответственный", renderDashMultiselect("owner", ownerOptions, dashboardFilters.owner))}
+      ${renderDashFilterField("Категория", renderDashMultiselect("category", categoryOptions, dashboardFilters.category))}
+      ${renderDashFilterField("Стадия", renderDashMultiselect("stage", stageOptions, dashboardFilters.stage))}
+      ${renderDashFilterField("Срок", renderDashMultiselect("budgetPeriod", periodOptions, dashboardFilters.budgetPeriod))}
       ${dashFiltersActive() ? `<button type="button" class="btn btn-sm" id="dash-clear-filters">Сбросить фильтры</button>` : ""}
     </div>
     <div class="grid grid-4" style="margin-bottom:1rem">

@@ -22,7 +22,8 @@ const DEALS_TABLE_COLS = [
   {
     key: "owner",
     label: "Владелец",
-    filter: "select-dynamic",
+    filter: "multiselect",
+    filterOptions: deals => resolveOwnerFilterOptions(deals),
     get: d => d.owner,
     render(d) {
       return `<td>${escapeHtml(d.owner)}</td>`;
@@ -55,8 +56,8 @@ const DEALS_TABLE_COLS = [
   {
     key: "category",
     label: "Категория",
-    filter: "select",
-    filterOptions: ["Горячая", "Тёплая", "Наблюдение", "Отказ"],
+    filter: "multiselect",
+    filterOptions: () => ["Горячая", "Тёплая", "Наблюдение", "Отказ"],
     get: d => d.category,
     render(d) {
       return `<td>${categoryBadge(d.category)}</td>`;
@@ -163,6 +164,17 @@ function resolveStageFilterOptions(deals) {
     if (!all.includes(s)) all.push(s);
   });
   return all;
+}
+
+function resolveOwnerFilterOptions(deals) {
+  const inactive = ["Павел Витков"];
+  const order = (state?.lists?.owners || []).filter(o => !inactive.includes(o));
+  const fromDeals = [...new Set((deals || []).map(d => d.owner).filter(Boolean))];
+  const all = order.filter(o => fromDeals.includes(o));
+  fromDeals.forEach(o => {
+    if (!inactive.includes(o) && !all.includes(o)) all.push(o);
+  });
+  return all.sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 function resolveBudgetPeriodFilterOptions(deals) {

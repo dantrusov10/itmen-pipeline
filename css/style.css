@@ -563,16 +563,24 @@ body.page-deals-active .deals-table-hint {
   border-radius: var(--radius);
   overflow: visible;
 }
-.dashboard-filters label {
+.dash-filter-field {
   display: flex;
   flex-direction: column;
   gap: .25rem;
   font-size: .78rem;
   color: var(--muted);
-  min-width: 0;
+  min-width: 10rem;
+}
+.dash-filter-label {
+  font-size: .78rem;
+  color: var(--muted);
 }
 .dashboard-filters .deals-ms-filter {
-  min-width: 10rem;
+  min-width: 11rem;
+}
+.dashboard-filters .deals-ms-panel {
+  min-width: 240px;
+  width: 240px;
 }
 .dash-filter-select {
   min-width: 11rem;
@@ -647,8 +655,8 @@ body.page-deals-active .deals-table-hint {
   left: 0;
   top: calc(100% + 2px);
   z-index: 20;
-  min-width: 260px;
-  width: 260px;
+  min-width: 280px;
+  width: 280px;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -656,17 +664,20 @@ body.page-deals-active .deals-table-hint {
   max-height: 280px;
   overflow: hidden;
 }
+.deals-filter-row .deals-ms-panel {
+  min-width: 280px;
+  width: 280px;
+}
 .deals-ms-filter--right .deals-ms-panel {
   left: auto;
   right: 0;
 }
 .deals-ms-filter.open .deals-ms-panel { display: flex; flex-direction: column; }
 .deals-ms-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: .35rem;
-  padding: .35rem .45rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .2rem .35rem;
+  padding: .35rem .5rem;
   border-bottom: 1px solid #f0f0f0;
   background: #f8fafc;
   flex-shrink: 0;
@@ -674,13 +685,16 @@ body.page-deals-active .deals-table-hint {
 .deals-ms-all,
 .deals-ms-clear {
   font-size: .62rem;
-  line-height: 1.2;
-  padding: .15rem .25rem;
+  line-height: 1.25;
+  padding: .2rem .15rem;
   border: none;
   background: none;
   color: #2563eb;
   cursor: pointer;
   white-space: nowrap;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .deals-ms-all:hover,
 .deals-ms-clear:hover { text-decoration: underline; }
@@ -698,12 +712,15 @@ body.page-deals-active .deals-table-hint {
 .deals-ms-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 .deals-ms-opt {
   display: flex;
-  align-items: center;
+  flex-direction: row;
+  align-items: flex-start;
   gap: .45rem;
   padding: .35rem .55rem;
   font-size: .72rem;
   cursor: pointer;
   line-height: 1.35;
+  width: 100%;
+  box-sizing: border-box;
 }
 .deals-ms-opt:hover { background: #f7fafc; }
 .deals-ms-opt input {
