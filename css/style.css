@@ -564,6 +564,21 @@ textarea { min-height: 60px; resize: vertical; }
 }
 .deals-col-filter:focus { outline: 2px solid #93c5fd; border-color: #2563eb; }
 
+.range-filter {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+.deals-range-input {
+  min-width: 0;
+  width: 100%;
+}
+.deals-table-hint {
+  font-size: .72rem;
+  margin: 0 0 .65rem;
+  line-height: 1.4;
+}
+
 .tech-block {
   border: 1px solid var(--border);
   border-radius: var(--radius);

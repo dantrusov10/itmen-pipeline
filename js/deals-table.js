@@ -25,8 +25,8 @@ const DEALS_TABLE_COLS = [
     key: "amount",
     label: "Ожид. сумма",
     num: true,
-    filter: "text",
-    get: d => d.amount,
+    filter: "range",
+    get: d => Number(d.amount) || 0,
     render(d) {
       return `<td class="num col-amount">
         ${formatMoney(d.amount)}
@@ -38,10 +38,11 @@ const DEALS_TABLE_COLS = [
     key: "score",
     label: "Балл",
     num: true,
-    filter: "text",
+    filter: "range",
+    headerTitle: "Балл 0–100: сумма 9 критериев скоринга (каждый 0–5) с весами, (Σ×вес)/5×100",
     get: d => d.score,
     render(d) {
-      return `<td class="num">${d.score ?? "—"}</td>`;
+      return `<td class="num" title="Балл 0–100: (Σ критерий×вес)/5×100">${d.score ?? "—"}</td>`;
     },
   },
   {
@@ -55,32 +56,34 @@ const DEALS_TABLE_COLS = [
     },
   },
   {
-    key: "taskDue",
-    label: "Задача до",
-    date: true,
-    filter: "text",
-    get: d => d.taskDue,
+    key: "manualProb",
+    label: "Вероятность",
+    num: true,
+    filter: "range",
+    get: d => (d.manualProb > 0 ? d.manualProb * 100 : null),
     render(d) {
-      const days = d.daysTo != null
-        ? `<span class="cell-days ${d.daysTo < 0 ? "overdue" : ""}">${d.daysTo} дн.</span>`
-        : "";
-      return `<td class="col-date">${escapeHtml(d.taskDue || "—")}${days ? `<br>${days}` : ""}</td>`;
+      return `<td class="num">${d.manualProb > 0 ? Math.round(d.manualProb * 100) + "%" : "—"}</td>`;
     },
   },
   {
-    key: "risk",
-    label: "Риск",
+    key: "budgetStatus",
+    label: "Статус бюджета",
     filter: "select",
-    filterOptions: ["Неполный", "Устарела (>14 дн.)", "Горячая без бюджета", "—"],
-    get: d => d.riskFlag || (d.quality === "Неполный" ? "Неполный" : "—"),
+    filterOptions: () => (state?.lists?.budgetStatus || window.ITMEN_CONFIG?.budgetStatuses || []),
+    get: d => d.budgetStatus || "Неизвестно",
     render(d) {
-      if (d.riskFlag) {
-        return `<td><span class="badge badge-danger badge-compact" title="${escapeHtml(d.riskFlag)}">${escapeHtml(d.riskFlag.length > 18 ? d.riskFlag.slice(0, 16) + "…" : d.riskFlag)}</span></td>`;
-      }
-      if (d.quality === "Неполный") {
-        return `<td><span class="badge badge-warn badge-compact">Неполный</span></td>`;
-      }
-      return `<td class="muted">—</td>`;
+      return `<td><small>${escapeHtml(d.budgetStatus || "—")}</small></td>`;
+    },
+  },
+  {
+    key: "commitStatus",
+    label: "Статус коммита",
+    filter: "select",
+    filterOptions: () => (window.ITMEN_CONFIG?.commitStatuses || []).map(c => c.label),
+    get: d => d.commitLabel || commitLabel(d.commitStatus),
+    sortGet: d => d.commitLabel || commitLabel(d.commitStatus),
+    render(d) {
+      return `<td><small>${escapeHtml(d.commitLabel || "—")}</small></td>`;
     },
   },
 ];
@@ -90,35 +93,49 @@ let dealsTableColFilters = {};
 let dealsTableSearch = "";
 let dealsTableBound = false;
 
+function parseFilterNum(v) {
+  if (v == null || v === "") return null;
+  const n = parseFloat(String(v).replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
 function dealCellText(col, d) {
-  const v = col.get(d);
+  const v = (col.sortGet || col.get)(d);
   if (v == null || v === "") return "";
   return String(v);
 }
 
 function colSortValue(col, d) {
-  const v = col.get(d);
+  const getter = col.sortGet || col.get;
+  const v = getter(d);
   if (col.num) {
     if (v == null || v === "") return null;
     return +v;
   }
-  if (col.date) return v || "";
   return dealCellText(col, d).toLowerCase();
 }
 
-function matchColFilter(col, d, filterVal) {
-  const f = (filterVal || "").trim();
+function matchRangeFilter(col, d) {
+  const from = parseFilterNum(dealsTableColFilters[col.key + "__from"]);
+  const to = parseFilterNum(dealsTableColFilters[col.key + "__to"]);
+  if (from == null && to == null) return true;
+  const raw = col.get(d);
+  if (raw == null || raw === "" || (col.key !== "amount" && +raw === 0 && col.key === "manualProb")) {
+    return from == null && to == null;
+  }
+  const n = +raw;
+  if (!Number.isFinite(n)) return false;
+  if (from != null && n < from) return false;
+  if (to != null && n > to) return false;
+  return true;
+}
+
+function matchColFilter(col, d) {
+  if (col.filter === "range") return matchRangeFilter(col, d);
+  const f = (dealsTableColFilters[col.key] || "").trim();
   if (!f) return true;
   if (col.filter === "select" || col.filter === "select-dynamic") {
-    const cell = dealCellText(col, d);
-    if (f === "—") return !cell || cell === "—";
-    return cell === f || (f === "Неполный" && d.quality === "Неполный" && !d.riskFlag);
-  }
-  if (col.num) {
-    const raw = dealCellText(col, d).replace(/\s/g, "");
-    const fv = f.replace(/\s/g, "");
-    if (/^\d+$/.test(fv)) return raw.includes(fv);
-    return raw.toLowerCase().includes(fv.toLowerCase());
+    return dealCellText(col, d) === f;
   }
   return dealCellText(col, d).toLowerCase().includes(f.toLowerCase());
 }
@@ -126,8 +143,14 @@ function matchColFilter(col, d, filterVal) {
 function applyDealsTableFilters(deals) {
   let rows = deals;
   for (const col of DEALS_TABLE_COLS) {
+    if (col.filter === "range") {
+      if (dealsTableColFilters[col.key + "__from"] || dealsTableColFilters[col.key + "__to"]) {
+        rows = rows.filter(d => matchRangeFilter(col, d));
+      }
+      continue;
+    }
     const f = dealsTableColFilters[col.key];
-    if (f) rows = rows.filter(d => matchColFilter(col, d, f));
+    if (f) rows = rows.filter(d => matchColFilter(col, d));
   }
   const search = (dealsTableSearch || "").trim().toLowerCase();
   if (search) {
@@ -149,35 +172,42 @@ function sortDealsTableRows(deals) {
       const bn = bv == null ? -Infinity : bv;
       return (an - bn) * dir;
     }
-    if (col.date) {
-      const ad = av || "";
-      const bd = bv || "";
-      if (!ad && !bd) return 0;
-      if (!ad) return 1 * dir;
-      if (!bd) return -1 * dir;
-      return ad.localeCompare(bd) * dir;
-    }
     return String(av).localeCompare(String(bv), "ru") * dir;
   });
 }
 
+function resolveFilterOptions(col, deals) {
+  if (col.filter === "select-dynamic") {
+    return [...new Set((deals || []).map(d => col.get(d)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
+  }
+  if (typeof col.filterOptions === "function") return col.filterOptions();
+  return col.filterOptions || [];
+}
+
 function renderColFilter(col, deals) {
-  const val = escapeHtml(dealsTableColFilters[col.key] || "");
+  if (col.filter === "range") {
+    const from = escapeHtml(dealsTableColFilters[col.key + "__from"] || "");
+    const to = escapeHtml(dealsTableColFilters[col.key + "__to"] || "");
+    const suffix = col.key === "manualProb" ? "%" : (col.key === "amount" ? " ₽" : "");
+    return `<div class="range-filter">
+      <input type="number" class="deals-col-filter deals-range-input" data-col="${col.key}" data-bound="from" placeholder="от${suffix ? "" : ""}" value="${from}" title="От">
+      <input type="number" class="deals-col-filter deals-range-input" data-col="${col.key}" data-bound="to" placeholder="до" value="${to}" title="До">
+    </div>`;
+  }
   if (col.filter === "select" || col.filter === "select-dynamic") {
-    const options = col.filter === "select-dynamic"
-      ? [...new Set((deals || []).map(d => col.get(d)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"))
-      : (col.filterOptions || []);
+    const options = resolveFilterOptions(col, deals);
     const opts = options.map(o =>
       `<option value="${escapeHtml(o)}" ${dealsTableColFilters[col.key] === o ? "selected" : ""}>${escapeHtml(o)}</option>`
     ).join("");
     return `<select class="deals-col-filter" data-col="${col.key}"><option value="">Все</option>${opts}</select>`;
   }
+  const val = escapeHtml(dealsTableColFilters[col.key] || "");
   return `<input type="search" class="deals-col-filter" data-col="${col.key}" placeholder="Фильтр…" value="${val}">`;
 }
 
 function renderDealsTableRow(d) {
   const realIdx = state.deals.findIndex(x => x.id === d.id);
-  const cls = d.quality === "Неполный" ? "row-incomplete" : d.riskFlag ? "row-risk" : "";
+  const cls = d.quality === "Неполный" ? "row-incomplete" : "";
   return `<tr class="${cls}" data-id="${escapeHtml(d.id)}">
     ${DEALS_TABLE_COLS.map(c => c.render(d)).join("")}
     <td class="actions">
@@ -195,7 +225,8 @@ function sortMarkHtml(key) {
 
 function renderSortHeader(col) {
   const active = dealsTableSort.key === col.key;
-  return `<th data-sort="${col.key}" class="sortable${active ? " sorted-" + dealsTableSort.dir : ""}" title="Сортировка: клик — по возрастанию/убыванию">
+  const title = col.headerTitle ? ` title="${escapeHtml(col.headerTitle)}"` : "";
+  return `<th data-sort="${col.key}" class="sortable${active ? " sorted-" + dealsTableSort.dir : ""}"${title}>
     <span class="th-label">${escapeHtml(col.label)}</span>${sortMarkHtml(col.key)}
   </th>`;
 }
@@ -220,13 +251,28 @@ function updateDealsTableBody(deals) {
   if (meta) meta.textContent = `Показано ${filtered.length} из ${deals.length}`;
 }
 
+function setColFilterFromInput(el) {
+  const col = el.dataset.col;
+  const bound = el.dataset.bound;
+  if (bound) dealsTableColFilters[col + "__" + bound] = el.value;
+  else dealsTableColFilters[col] = el.value;
+}
+
+function clearAllDealsFilters() {
+  dealsTableColFilters = {};
+  dealsTableSearch = "";
+  const gs = document.getElementById("deals-global-search");
+  if (gs) gs.value = "";
+  document.querySelectorAll(".deals-col-filter").forEach(el => { el.value = ""; });
+}
+
 function bindDealsTableEvents() {
   if (dealsTableBound) return;
   dealsTableBound = true;
   const page = document.getElementById("page-deals");
   page?.addEventListener("click", e => {
     const th = e.target.closest("th[data-sort]");
-    if (!th) return;
+    if (!th || e.target.closest(".deals-filter-row")) return;
     e.preventDefault();
     const key = th.dataset.sort;
     if (dealsTableSort.key === key) {
@@ -241,25 +287,22 @@ function bindDealsTableEvents() {
     if (e.target.id === "deals-global-search") {
       dealsTableSearch = e.target.value;
       updateDealsTableBody(getEnrichedDeals());
+      return;
     }
-    if (e.target.classList.contains("deals-col-filter") && e.target.tagName === "INPUT") {
-      dealsTableColFilters[e.target.dataset.col] = e.target.value;
+    if (e.target.classList.contains("deals-col-filter")) {
+      setColFilterFromInput(e.target);
       updateDealsTableBody(getEnrichedDeals());
     }
   });
   page?.addEventListener("change", e => {
     if (e.target.classList.contains("deals-col-filter") && e.target.tagName === "SELECT") {
-      dealsTableColFilters[e.target.dataset.col] = e.target.value;
+      setColFilterFromInput(e.target);
       updateDealsTableBody(getEnrichedDeals());
     }
   });
   page?.addEventListener("click", e => {
     if (e.target.id === "deals-clear-filters") {
-      dealsTableColFilters = {};
-      dealsTableSearch = "";
-      const gs = document.getElementById("deals-global-search");
-      if (gs) gs.value = "";
-      document.querySelectorAll(".deals-col-filter").forEach(el => { el.value = ""; });
+      clearAllDealsFilters();
       updateDealsTableBody(getEnrichedDeals());
     }
   });
@@ -273,10 +316,11 @@ function renderDealsTable(deals) {
     <div class="deals-toolbar">
       <button class="btn btn-primary" onclick="openDealModal()">+ Добавить</button>
       <label class="btn" style="cursor:pointer">⬆️ Excel<input type="file" id="btn-import-excel" accept=".xlsx,.xls" hidden></label>
-      <input type="search" id="deals-global-search" class="deals-global-search" placeholder="Быстрый поиск по всем столбцам…" value="${escapeHtml(dealsTableSearch)}">
+      <input type="search" id="deals-global-search" class="deals-global-search" placeholder="Быстрый поиск…" value="${escapeHtml(dealsTableSearch)}">
       <button type="button" class="btn btn-sm" id="deals-clear-filters">Сбросить фильтры</button>
       <span class="deals-table-meta" id="deals-table-meta"></span>
     </div>
+    <p class="deals-table-hint muted">Балл (0–100): взвешенная сумма 9 критериев скоринга в паспорте (шкала 0–5 у каждого), формула (Σ оценка×вес) / 5 × 100. Категория: ≥80 горячая, ≥60 тёплая, ≥40 наблюдение, &lt;40 отказ.</p>
     <div class="deals-table-shell">
       <table class="deals-table deals-table-compact" id="deals-table">
         <thead>
