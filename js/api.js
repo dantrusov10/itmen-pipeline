@@ -69,12 +69,13 @@ async function apiLoadPipeline() {
 }
 
 async function apiSavePipeline(state) {
+  const savedBy = typeof getActorName === "function" ? getActorName() : "";
   if (window.ITMEN_API.backend === "gas") {
-    return gasFetch({ action: "save", state });
+    return gasFetch({ action: "save", state, savedBy });
   }
   return apiFetch("/api/pipeline", {
     method: "PUT",
-    body: JSON.stringify({ state }),
+    body: JSON.stringify({ state, savedBy }),
   });
 }
 
