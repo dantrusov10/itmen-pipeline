@@ -59,7 +59,15 @@ var SCALAR_FIELDS = [
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || 'get';
   try {
-    if (action === 'health') return json_({ ok: true, ts: new Date().toISOString() });
+    if (action === 'health') {
+      getAuditSheet_();
+      return json_({ ok: true, ts: new Date().toISOString(), auditSheet: AUDIT_SHEET });
+    }
+    if (action === 'init' || action === 'setup') {
+      getStateSheet_();
+      getAuditSheet_();
+      return json_({ ok: true, auditSheet: AUDIT_SHEET, pipelineSheet: STATE_SHEET });
+    }
     if (action === 'get' || action === 'pipeline') return json_({ state: loadState_() });
     if (action === 'managers') return json_(MANAGERS);
     return json_({ error: 'Unknown action: ' + action });
@@ -76,6 +84,7 @@ function doPost(e) {
         return json_({ error: 'Некорректное тело запроса' });
       }
       var oldState = loadState_();
+      getAuditSheet_();
       var savedBy = String(body.savedBy || '').trim();
       var diffRows = diffPipeline_(oldState, body.state);
       var auditWritten = appendAudit_(savedBy, diffRows);

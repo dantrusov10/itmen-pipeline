@@ -3,5 +3,5 @@
  * Скопируйте из: Apps Script → Развернуть → Веб-приложение → URL
  */
 window.ITMEN_GAS_CONFIG = {
-  url: "https://script.google.com/macros/s/AKfycbyCj4W3I68-oHgYw6zTJ8NYQ5aS1xXUsoFrl0E1zmX0hn8h_fly6U3i5RWOpECfS2yIIg/exec",
+  url: "https://script.google.com/macros/s/AKfycbyPogpboq5cwuQ98cLNRXJoTDlg_FvkzGYoK5cFAMv7jbM_KMNAQE8b5lxXKpEpP8I6hg/exec",
 };
