@@ -1182,3 +1182,77 @@ body.page-deals-active .deals-table-hint {
 @media (max-width: 900px) {
   .app-skeleton .sk-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Полнота паспортов — блоки */
+.passport-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.passport-panel-pct {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--primary, #2c5282);
+}
+.passport-panel-sub {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+}
+.passport-block-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.passport-block-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 8px);
+  background: #fafbfc;
+  cursor: pointer;
+  flex: 1 1 180px;
+  max-width: 100%;
+}
+.passport-block-chip:has(input:checked) {
+  border-color: #2c5282;
+  background: #ebf4ff;
+}
+.passport-block-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  flex: 1;
+}
+.passport-block-chip-text strong {
+  font-size: 0.82rem;
+}
+.passport-block-drill-btn {
+  flex-shrink: 0;
+  padding: 0.15rem 0.45rem;
+  line-height: 1.2;
+}
+.passport-panel-actions {
+  margin-top: 0.25rem;
+}
+.manager-passport-table th,
+.manager-passport-table td {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.manager-passport-table .pct-good {
+  color: #276749;
+  font-weight: 600;
+}
+.manager-passport-table .pct-bad {
+  color: #c53030;
+  font-weight: 600;
+}
+@media (max-width: 900px) {
+  .passport-block-chip { flex: 1 1 100%; }
+}

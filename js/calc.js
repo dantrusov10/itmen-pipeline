@@ -197,14 +197,6 @@ function avgRequirementPct(tr) {
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 }
 
-function calcDataQuality(deal) {
-  if (!deal.id) return "";
-  if (!deal.owner || deal.owner === "Не назначен") return "Неполный";
-  if (!deal.customer?.trim()) return "Неполный";
-  if (!deal.amount) return "Неполный";
-  return "OK";
-}
-
 function calcRiskFlag(deal, category, daysSinceUpdate, daysToTask) {
   if (!deal.id) return "";
   if (category === "Горячая" && deal.budgetStatus === "Нет бюджета") return "Горячая без бюджета";
@@ -440,6 +432,17 @@ function calcMetrics(deals) {
   const scores = all.filter(x => x.score != null).map(x => x.score);
   const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
   const incomplete = all.filter(x => x.quality === "Неполный").length;
+  const passportStats = typeof calcPassportCompletenessStats === "function"
+    ? calcPassportCompletenessStats(all, typeof passportBlockSelection !== "undefined" ? passportBlockSelection : null)
+    : null;
+  const passportAllBlocksStats = typeof calcPassportCompletenessStats === "function" && typeof PASSPORT_BLOCKS !== "undefined"
+    ? calcPassportCompletenessStats(all, PASSPORT_BLOCKS.map(b => b.id))
+    : null;
+  const passportCompleteness = passportStats?.pct ?? (all.length ? 1 - incomplete / all.length : 0);
+  const topRisks = typeof calcTopRisks === "function" ? calcTopRisks(all) : [];
+  const managerPassport = typeof calcManagerPassportStats === "function"
+    ? calcManagerPassportStats(all, typeof passportBlockSelection !== "undefined" ? passportBlockSelection : null)
+    : [];
   const riskFlags = all.filter(x => x.riskFlag).length;
   const confirmedBudget = all.filter(x => x.budgetStatus === "Подтверждён").length;
   const confirmedBudgetSum = all.filter(x => x.budgetStatus === "Подтверждён").reduce((s, x) => s + (x.expectedAmount || 0), 0);
@@ -449,7 +452,6 @@ function calcMetrics(deals) {
   const strongIds = ["protocol", "loi", "guarantee", "contract"];
   const strongCommits = all.filter(x => strongIds.includes(x.commitStatus)).length;
   const hotShare = all.length ? (counts["Горячая"] || 0) / all.length : 0;
-  const passportCompleteness = all.length ? 1 - incomplete / all.length : 0;
 
   const byOwner = {};
   all.forEach(x => {
@@ -560,7 +562,9 @@ function calcMetrics(deals) {
   return {
     totalPipeline, weighted, counts, avgScore, incomplete, riskFlags,
     confirmedBudget, confirmedBudgetSum, commitCounts, strongCommits, hotShare,
-    passportCompleteness, byOwner, stageFunnel, byBudget, byBudgetPeriod,
+    passportCompleteness, passportStats, passportIncomplete: passportStats?.incomplete ?? incomplete,
+    passportAllBlocksPct: passportAllBlocksStats?.pct ?? 0,
+    topRisks, managerPassport, byOwner, stageFunnel, byBudget, byBudgetPeriod,
     avgLoyalty, highLoyalty, topSegments,
     avgProductPct, avgPilotPct, topDeals, attention, inPilot, deals: all,
     pipelineCount: all.length, byPartner, budgetMatrix, budgetMatrixPeriods: matrixPeriods,

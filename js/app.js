@@ -182,6 +182,14 @@ function bindDashboardEvents() {
   if (!el) return;
 
   el.addEventListener("change", e => {
+    if (e.target.classList.contains("passport-block-cb")) {
+      const checked = [...el.querySelectorAll(".passport-block-cb:checked")].map(cb => cb.value);
+      passportBlockSelection = checked.length ? checked : ["basic"];
+      persistPassportBlockSelection();
+      invalidateMetricsCache();
+      renderPanel(getDashboardMetrics());
+      return;
+    }
     if (e.target.classList.contains("dash-ms-cb")) {
       syncDashMultiselect(e.target.dataset.dashKey);
       renderPanel(getDashboardMetrics());
@@ -238,6 +246,15 @@ function bindDashboardEvents() {
     if (drill) {
       e.preventDefault();
       openDealsReport(withDashboardFilters(drillSpecFromElement(drill)));
+      return;
+    }
+    const passportDrill = e.target.closest(".passport-block-drill-btn");
+    if (passportDrill) {
+      e.preventDefault();
+      e.stopPropagation();
+      const blockId = passportDrill.dataset.passportBlock;
+      if (blockId) openDealsReport(withDashboardFilters(buildDealsReportSpec({}, { type: "passportBlock", value: blockId })));
+      return;
     }
   });
 }
@@ -518,17 +535,21 @@ function renderPanel(m) {
       ${metricCardDrill("Тех. соответствие", m.avgProductPct != null ? m.avgProductPct + "%" : "—", m.avgPilotPct != null ? `пилот ${m.avgPilotPct}%` : "", "")}
     </div>
     <div class="grid grid-4" style="margin-bottom:1rem">
-      ${metricCardDrill("Неполные паспорта", m.incomplete, "требуют данных", dashDrill(buildDealsReportSpec({}, { type: "incomplete" })))}
+      ${metricCardDrill("Неполные (выбранные блоки)", m.passportIncomplete ?? m.incomplete, "по активным критериям", dashDrill(buildDealsReportSpec({}, { type: "passportBlocks", value: (passportBlockSelection || []).join("|") })))}
       ${metricCardDrill("Флаги риска", m.riskFlags, "критичные", dashDrill(buildDealsReportSpec({}, { type: "risk" })))}
       ${metricCardDrill("Ср. лояльность", m.avgLoyalty != null ? m.avgLoyalty + " / 5" : "—", m.highLoyalty ? `высокая (≥4): ${m.highLoyalty}` : "оценка в паспорте", dashDrill(buildDealsReportSpec({ score__from: "1" })))}
       ${metricCardDrill("Наблюдение / Отказ", (m.counts["Наблюдение"]||0) + (m.counts["Отказ"]||0), "", dashDrill(buildDealsReportSpec({ category: ["Наблюдение", "Отказ"] })))}
     </div>
-    <div class="grid grid-4" style="margin-bottom:1.5rem">
+    <div class="grid grid-4" style="margin-bottom:1rem">
       ${metricCardDrill("Средний балл", m.avgScore ?? "—", "по сделкам в срезе", dashDrill(buildDealsReportSpec({ score__from: "1" })))}
-      ${metricCardDrill("Полнота паспортов", m.passportCompleteness != null ? Math.round(m.passportCompleteness * 100) + "%" : "—", `${n - m.incomplete} из ${n} заполнены`, dashDrill(buildDealsReportSpec({}, { type: "incomplete" })))}
       ${metricCardDrill("Сильные коммиты", m.strongCommits || 0, "протокол / LOI / гарантия / контракт", dashDrill(buildDealsReportSpec({ commitStatus: strongCommitLabels() })))}
       ${metricCardDrill("Доля горячих", n ? Math.round((m.hotShare || 0) * 100) + "%" : "—", `${m.counts["Горячая"] || 0} из ${n}`, dashDrill(buildDealsReportSpec({ category: ["Горячая"] })))}
+      ${metricCardDrill("Все 5 блоков", m.passportAllBlocksPct != null ? Math.round(m.passportAllBlocksPct * 100) + "%" : "—", "полный паспорт", dashDrill(buildDealsReportSpec({}, { type: "passportBlocks", value: PASSPORT_BLOCKS.map(b => b.id).join("|") })))}
     </div>
+
+    ${typeof renderPassportCompletenessPanel === "function" ? renderPassportCompletenessPanel(m, n) : ""}
+    ${typeof renderTopRisksPanel === "function" ? renderTopRisksPanel(m) : ""}
+    ${typeof renderManagerPassportPanel === "function" ? renderManagerPassportPanel(m) : ""}
 
     <div class="card dynamics-card" style="margin-bottom:1.5rem">
       <div class="card-header">Динамика пайплайна</div>

@@ -13,6 +13,27 @@ function applyPresetFilter(rows, preset) {
   switch (preset.type) {
     case "incomplete":
       return rows.filter(d => d.quality === "Неполный");
+    case "passportBlocks": {
+      const ids = preset.value ? String(preset.value).split("|").filter(Boolean) : (typeof passportBlockSelection !== "undefined" ? passportBlockSelection : []);
+      return rows.filter(d => {
+        const st = evaluatePassportBlocks(d);
+        return !isPassportCompleteForBlocks(st, ids.length ? ids : PASSPORT_BLOCKS.map(b => b.id));
+      });
+    }
+    case "passportBlock": {
+      const blockId = preset.value;
+      if (!blockId) return rows;
+      return rows.filter(d => !evaluatePassportBlocks(d).blocks[blockId]);
+    }
+    case "riskTop": {
+      const label = preset.value;
+      if (!label) return rows.filter(d => d.riskFlag || (normalizeRiskTypes(d).length > 0));
+      return rows.filter(d => {
+        const types = normalizeRiskTypes(d);
+        if (types.length && riskLabels(types).includes(label)) return true;
+        return d.riskFlag === label;
+      });
+    }
     case "risk":
       return rows.filter(d => d.riskFlag);
     case "pilot":
@@ -205,6 +226,9 @@ function getDealsReportFilterSummary() {
   if (dealsTablePreset?.type) {
     const labels = {
       incomplete: "Неполные паспорта",
+      passportBlocks: "Неполные по выбранным блокам",
+      passportBlock: `Блок: ${dealsTablePreset.value || ""}`,
+      riskTop: dealsTablePreset.value ? `Риск: ${dealsTablePreset.value}` : "Сделки с рисками",
       risk: "Флаги риска",
       pilot: "На пилоте",
       attention: "Требуют внимания",
