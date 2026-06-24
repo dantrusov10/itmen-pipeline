@@ -249,10 +249,10 @@ function getMetrics() {
   return metricsCache;
 }
 
-async function loadStateFromServer() {
+async function loadStateFromServer(opts = {}) {
   if (window.ITMEN_API?.enabled) {
     try {
-      const loaded = await apiLoadPipeline();
+      const loaded = await apiLoadPipeline({ lite: opts.lite !== false });
       if (loaded) return migrateState(loaded);
       return migrateState(structuredClone(window.ITMEN_INITIAL));
     } catch (e) {
@@ -263,9 +263,38 @@ async function loadStateFromServer() {
   return loadStateLocal();
 }
 
+async function syncPipelineFromServer() {
+  if (!window.ITMEN_API?.enabled) return;
+  try {
+    showSyncBanner("⟳ Обновление данных с сервера…", "sync");
+    const cached = state;
+    const lite = await apiLoadPipeline({ lite: true });
+    if (!lite) throw new Error("Пустой ответ сервера");
+    const merged = mergeLiteState(cached, lite);
+    const changed = isServerNewer(merged, cached);
+    state = merged;
+    persistStateCache(state);
+    invalidateMetricsCache();
+    renderAll();
+    if (changed) {
+      showSyncBanner("✓ Данные обновлены с сервера", "ok");
+      setTimeout(clearSyncBanner, 2500);
+    } else {
+      clearSyncBanner();
+    }
+  } catch (e) {
+    console.error(e);
+    showSyncBanner(
+      `⚠ Не удалось обновить с сервера: ${escapeHtml(e.message || "ошибка")}. Показана локальная копия. <button type="button" class="btn btn-sm" id="retry-load-btn">Повторить</button>`,
+      "error"
+    );
+    document.getElementById("retry-load-btn")?.addEventListener("click", () => syncPipelineFromServer());
+  }
+}
+
 function loadStateLocal() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(PIPELINE_CACHE_KEY);
     if (saved) return migrateState(JSON.parse(saved));
     const legacy = localStorage.getItem("itmen_pipeline_v1");
     if (legacy) {
@@ -319,8 +348,10 @@ async function saveState(meta = {}) {
           baseSavedAt: state._savedAt || null,
           forceFull: !!meta.forceFull,
         });
-        if (res.state) state = migrateState(res.state);
-        else if (res.updatedAt) state._savedAt = res.updatedAt;
+        if (res.state) {
+          state = migrateState(res.state);
+          persistStateCache(state);
+        } else if (res.updatedAt) state._savedAt = res.updatedAt;
         const n = res?.auditRows ?? 0;
         let auditNote = n > 0 ? ` · аудит: ${n} строк` : " · аудит: 0 изменений";
         if (res.conflicts?.length) {
@@ -335,6 +366,7 @@ async function saveState(meta = {}) {
       }
     } else {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      persistStateCache(state);
       showToast(typeof apiBackendLabel === "function"
         ? `Сохранено (${apiBackendLabel()})`
         : "Данные сохранены локально");
@@ -666,10 +698,7 @@ function renderPanel(m) {
         : "Данные сохраняются локально в браузере."} Каталог вендоров: ${catalogCountLabel?.() ?? "—"} позиций.</div>`;
 
   if (typeof bindDynamicsEvents === "function") bindDynamicsEvents();
-  if (typeof renderDynamicsBlock === "function") {
-    if (dynamicsData && dynamicsData.period === dynamicsPeriod) renderDynamicsBlock(dynamicsData);
-    else if (typeof refreshDynamics === "function") refreshDynamics(dynamicsPeriod);
-  }
+  if (typeof scheduleDynamicsLoad === "function") scheduleDynamicsLoad();
 }
 
 function renderScoring() {
@@ -855,7 +884,19 @@ function openDealModal(idx) {
 async function openDealModalAsync(idx) {
   await ensureArchitectureLoaded();
   editingDealIdx = idx ?? null;
-  const raw = idx != null ? state.deals[idx] : emptyDeal();
+  let raw = idx != null ? state.deals[idx] : emptyDeal();
+  if (idx != null && raw?.id && needsFullDeal(raw) && window.ITMEN_API?.enabled) {
+    try {
+      const full = await apiLoadDeal(raw.id);
+      if (full) {
+        state.deals[idx] = migrateDeal(full);
+        raw = state.deals[idx];
+        persistStateCache(state);
+      }
+    } catch (e) {
+      console.warn("getDeal:", e);
+    }
+  }
   const d = migrateDeal(raw);
   modalSuggestion = suggestScores(d);
   const hasScores = Object.values(d.scores || {}).some(v => v > 0);
@@ -1140,25 +1181,8 @@ async function importJson(input) {
   input.value = "";
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  let loadError = null;
-  if (window.ITMEN_API?.enabled) {
-    try {
-      state = await loadStateFromServer();
-    } catch (e) {
-      loadError = e;
-      console.error(e);
-      try {
-        state = loadStateLocal();
-        if (!state?.deals?.length) state = migrateState(structuredClone(window.ITMEN_INITIAL));
-      } catch (e2) {
-        state = migrateState(structuredClone(window.ITMEN_INITIAL));
-      }
-    }
-  } else {
-    state = loadStateLocal();
-    if (typeof showSetupBanner === "function") showSetupBanner();
-  }
+document.addEventListener("DOMContentLoaded", () => {
+  renderAppSkeleton();
 
   document.getElementById("nav").innerHTML = Object.entries(PAGES).map(([k, v]) =>
     `<a href="#${k}" data-page="${k}"><span class="icon">${v.icon}</span>${v.title}</a>`
@@ -1174,28 +1198,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     m.addEventListener("click", e => { if (e.target === m) m.classList.remove("open"); });
   });
 
-  if (loadError) {
-    const bar = document.createElement("div");
-    bar.style.cssText = "background:#fff3cd;border-bottom:1px solid #ffc107;padding:.55rem 1rem;font-size:.85rem;color:#664d03";
-    bar.innerHTML = `⚠️ Не удалось загрузить свежие данные с сервера: <strong>${escapeHtml(loadError.message || "ошибка")}</strong>. Показана локальная копия. <button type="button" class="btn btn-sm" id="retry-load-btn">Повторить</button>`;
-    document.querySelector(".main")?.prepend(bar);
-    bar.querySelector("#retry-load-btn")?.addEventListener("click", async () => {
-      try {
-        state = await loadStateFromServer();
-        bar.remove();
-        renderAll();
-        showToast("Данные обновлены с сервера");
-      } catch (e2) {
-        alert("Повтор не удался: " + (e2.message || e2));
-      }
-    });
-  }
-
   bindDashboardEvents();
   if (typeof bindDealsTableEvents === "function") bindDealsTableEvents();
+
+  if (window.ITMEN_API?.enabled) {
+    state = loadStateLocal();
+    if (!state?.deals?.length) state = migrateState(structuredClone(window.ITMEN_INITIAL));
+  } else {
+    state = loadStateLocal();
+    if (typeof showSetupBanner === "function") showSetupBanner();
+  }
+
   renderAll();
   const boot = parseLocationHash();
   navigate(boot.page || "panel", boot.spec);
+
+  if (window.ITMEN_API?.enabled) {
+    syncPipelineFromServer();
+  }
+
   window.addEventListener("hashchange", () => {
     const p = parseLocationHash();
     if (p.page === "deals" && activePage === "deals") {

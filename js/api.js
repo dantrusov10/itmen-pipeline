@@ -51,9 +51,11 @@ async function apiFetch(path, opts = {}) {
   return data;
 }
 
-async function apiLoadPipeline() {
+async function apiLoadPipeline(opts = {}) {
+  const lite = opts.lite !== false && window.ITMEN_API?.backend === "gas";
   if (window.ITMEN_API.backend === "gas") {
-    const res = await fetch(`${window.ITMEN_API.gasUrl}?action=get`, { redirect: "follow" });
+    const action = lite ? "getLite" : "get";
+    const res = await fetch(`${window.ITMEN_API.gasUrl}?action=${action}`, { redirect: "follow" });
     const text = await res.text();
     let data;
     try {
@@ -66,6 +68,20 @@ async function apiLoadPipeline() {
   }
   const { state } = await apiFetch("/api/pipeline");
   return state;
+}
+
+async function apiLoadDeal(dealId) {
+  if (window.ITMEN_API.backend === "gas") {
+    const res = await fetch(
+      `${window.ITMEN_API.gasUrl}?action=getDeal&dealId=${encodeURIComponent(dealId)}`,
+      { redirect: "follow" }
+    );
+    const data = JSON.parse(await res.text());
+    if (data.error) throw new Error(data.error);
+    return data.deal || null;
+  }
+  const { state } = await apiFetch("/api/pipeline");
+  return (state?.deals || []).find(d => d.id === dealId) || null;
 }
 
 async function apiSavePipeline(state, meta = {}) {

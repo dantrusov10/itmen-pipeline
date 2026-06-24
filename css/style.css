@@ -1042,3 +1042,34 @@ body.page-deals-active .deals-table-hint {
 .scenario-card .index { font-size: 1.25rem; font-weight: 700; color: var(--navy); }
 
 .scorecard-table td:nth-child(3) { font-weight: 600; }
+
+.app-skeleton { padding: 1rem 0; }
+.app-skeleton .sk-line {
+  height: 14px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e8edf3 25%, #f4f6f9 50%, #e8edf3 75%);
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.2s ease-in-out infinite;
+}
+.app-skeleton .sk-wide { width: 55%; height: 22px; margin-bottom: 16px; }
+.app-skeleton .sk-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.app-skeleton .sk-card {
+  height: 88px;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, #e8edf3 25%, #f4f6f9 50%, #e8edf3 75%);
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes sk-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (max-width: 900px) {
+  .app-skeleton .sk-grid { grid-template-columns: repeat(2, 1fr); }
+}

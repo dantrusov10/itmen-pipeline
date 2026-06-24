@@ -100,6 +100,12 @@ function doGet(e) {
       getAuditSheet_();
       return json_({ ok: true, auditSheet: AUDIT_SHEET, pipelineSheet: STATE_SHEET });
     }
+    if (action === 'getLite') return json_({ state: loadStateLite_() });
+    if (action === 'getDeal') {
+      var dealId = String((e.parameter && e.parameter.dealId) || '');
+      if (!dealId) return json_({ error: 'dealId required' });
+      return json_({ deal: getDealById_(dealId) });
+    }
     if (action === 'get' || action === 'pipeline') return json_({ state: loadState_() });
     if (action === 'managers') return json_(MANAGERS);
     return json_({ error: 'Unknown action: ' + action });
@@ -195,6 +201,62 @@ function loadState_() {
   return JSON.parse(jsonStr);
 }
 
+var PIPELINE_LITE_CACHE_KEY = 'pipeline_lite_v1';
+
+function getPipelineCache_() {
+  return CacheService.getScriptCache();
+}
+
+function invalidatePipelineCache_() {
+  getPipelineCache_().remove(PIPELINE_LITE_CACHE_KEY);
+}
+
+function stripDealLite_(d) {
+  var copy = JSON.parse(JSON.stringify(d));
+  if (copy.pains && String(copy.pains).trim()) copy.hasPains = true;
+  delete copy.pains;
+  delete copy.riskComment;
+  if (copy.techResearch) {
+    var tr = copy.techResearch;
+    copy.techResearch = {
+      seekingSegments: tr.seekingSegments || [],
+      seekingOtherLabel: tr.seekingOtherLabel || '',
+      productRequirementsPct: tr.productRequirementsPct,
+      pilotRequirementsPct: tr.pilotRequirementsPct
+    };
+  }
+  copy._lite = true;
+  return copy;
+}
+
+function toLiteState_(state) {
+  if (!state) return null;
+  var copy = JSON.parse(JSON.stringify(state));
+  if (copy.deals) copy.deals = copy.deals.map(stripDealLite_);
+  return copy;
+}
+
+function loadStateLite_() {
+  var cache = getPipelineCache_();
+  var cached = cache.get(PIPELINE_LITE_CACHE_KEY);
+  if (cached) return JSON.parse(cached);
+  var full = loadState_();
+  if (!full) return null;
+  var lite = toLiteState_(full);
+  var json = JSON.stringify(lite);
+  if (json.length < 95000) cache.put(PIPELINE_LITE_CACHE_KEY, json, 300);
+  return lite;
+}
+
+function getDealById_(dealId) {
+  var state = loadState_();
+  if (!state || !state.deals) return null;
+  for (var i = 0; i < state.deals.length; i++) {
+    if (state.deals[i].id === dealId) return state.deals[i];
+  }
+  return null;
+}
+
 function saveState_(state) {
   var sh = getStateSheet_();
   var payload = JSON.parse(JSON.stringify(state));
@@ -208,6 +270,7 @@ function saveState_(state) {
   if (chunks.length === 0) chunks.push(['']);
   sh.clear();
   sh.getRange(1, 1, chunks.length, 1).setValues(chunks);
+  invalidatePipelineCache_();
   return payload._savedAt;
 }
 

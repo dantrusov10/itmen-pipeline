@@ -121,6 +121,28 @@ async function refreshDynamics(period) {
   }
 }
 
+let dynamicsObserver = null;
+
+function scheduleDynamicsLoad() {
+  if (window.ITMEN_API?.backend !== "gas") return;
+  if (typeof activePage !== "undefined" && activePage !== "panel") return;
+  const block = document.getElementById("dynamics-block");
+  if (!block) return;
+  dynamicsObserver?.disconnect();
+  if (dynamicsData && dynamicsData.period === dynamicsPeriod) {
+    renderDynamicsBlock(dynamicsData);
+    return;
+  }
+  renderDynamicsBlock(null);
+  dynamicsObserver = new IntersectionObserver(entries => {
+    if (entries.some(e => e.isIntersecting) && !dynamicsLoading) {
+      dynamicsObserver?.disconnect();
+      refreshDynamics(dynamicsPeriod);
+    }
+  }, { rootMargin: "120px", threshold: 0.01 });
+  dynamicsObserver.observe(block);
+}
+
 function bindDynamicsEvents() {
   const panel = document.getElementById("page-panel");
   if (!panel || panel.dataset.dynBound) return;
