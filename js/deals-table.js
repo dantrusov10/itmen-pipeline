@@ -1,4 +1,54 @@
 /* Таблица сделок — сортировка и фильтрация по каждому столбцу */
+
+function dealTechResearch(d) {
+  return typeof migrateTechResearch === "function"
+    ? migrateTechResearch(d.techResearch || {})
+    : (d.techResearch || {});
+}
+
+function dealSeekingLabel(d) {
+  const tr = dealTechResearch(d);
+  const labels = Object.fromEntries((window.ITMEN_CONFIG?.techSegments || []).map(s => [s.id, s.label]));
+  const parts = (tr.seekingSegments || []).map(s =>
+    s === "other" ? (tr.seekingOtherLabel?.trim() || "Другое") : (labels[s] || s)
+  );
+  return parts.join(", ") || "—";
+}
+
+function dealCompetitorsSummary(d) {
+  const entries = Object.values(dealTechResearch(d).competitorEntries || {}).flat()
+    .filter(e => e && (e.vendor || e.product));
+  if (!entries.length) return "—";
+  const statusLabels = Object.fromEntries((window.ITMEN_CONFIG?.competitorStatuses || []).map(s => [s.id, s.label]));
+  const unique = [];
+  const seen = new Set();
+  entries.forEach(e => {
+    const label = `${(e.vendor || "").trim()}${e.product ? " · " + e.product : ""}`.trim() || "—";
+    if (seen.has(label)) return;
+    seen.add(label);
+    const st = statusLabels[e.status] || "";
+    unique.push(st ? `${label} (${st})` : label);
+  });
+  if (unique.length <= 2) return unique.join("; ");
+  return `${unique.slice(0, 2).join("; ")} +${unique.length - 2}`;
+}
+
+function dealTasksSummary(d) {
+  const tasks = (dealTechResearch(d).projectTasks || []).filter(Boolean);
+  if (!tasks.length) return "—";
+  if (tasks.length === 1) {
+    const t = String(tasks[0]);
+    return t.length > 36 ? t.slice(0, 34) + "…" : t;
+  }
+  return `${tasks.length} задач`;
+}
+
+function dealPainsPreview(d) {
+  const text = String(d.pains || "").trim();
+  if (!text) return d.hasPains ? "Есть" : "—";
+  return text.length > 40 ? text.slice(0, 38) + "…" : text;
+}
+
 const DEALS_TABLE_COLS = [
   {
     key: "customer",
@@ -136,6 +186,186 @@ const DEALS_TABLE_COLS = [
       return `<td class="col-date"><small>${escapeHtml(d.taskDue || "—")}${d.daysTo != null ? ` <span class="${overdue ? "text-warn" : ""}">(${d.daysTo} дн.)</span>` : ""}</small></td>`;
     },
   },
+  {
+    key: "expectedBudget",
+    label: "Ожид. бюджет",
+    num: true,
+    filter: "range",
+    group: "finance",
+    get: d => Number(d.expectedBudget) || 0,
+    render(d) {
+      return `<td class="num">${formatMoney(d.expectedBudget)}</td>`;
+    },
+  },
+  {
+    key: "weighted",
+    label: "Взвеш.",
+    num: true,
+    filter: "range",
+    group: "finance",
+    get: d => d.weighted || 0,
+    render(d) {
+      return `<td class="num">${d.weighted ? formatMoney(d.weighted) : "—"}</td>`;
+    },
+  },
+  {
+    key: "partnerDiscount",
+    label: "Скидка партнёру",
+    num: true,
+    filter: "range",
+    group: "finance",
+    get: d => Number(d.partnerDiscount) || 0,
+    render(d) {
+      return `<td class="num">${d.partnerDiscount ? d.partnerDiscount + "%" : "—"}</td>`;
+    },
+  },
+  {
+    key: "clientDiscount",
+    label: "Скидка клиенту",
+    num: true,
+    filter: "range",
+    group: "finance",
+    get: d => Number(d.clientDiscount) || 0,
+    render(d) {
+      return `<td class="num">${d.clientDiscount ? d.clientDiscount + "%" : "—"}</td>`;
+    },
+  },
+  {
+    key: "budgetPlanned",
+    label: "План согласования",
+    filter: "text",
+    group: "finance",
+    get: d => {
+      if (d.budgetStatus !== "Планируется согласование") return "";
+      if (d.budgetPlannedMonth && d.budgetPlannedYear) return `${d.budgetPlannedMonth}/${d.budgetPlannedYear}`;
+      return "";
+    },
+    render(d) {
+      const v = d.budgetStatus === "Планируется согласование" && d.budgetPlannedMonth && d.budgetPlannedYear
+        ? `${d.budgetPlannedMonth}/${d.budgetPlannedYear}` : "—";
+      return `<td><small>${escapeHtml(v)}</small></td>`;
+    },
+  },
+  {
+    key: "seeking",
+    label: "Что ищут",
+    filter: "text",
+    group: "tech",
+    get: d => dealSeekingLabel(d),
+    render(d) {
+      const label = dealSeekingLabel(d);
+      return `<td title="${escapeHtml(label)}"><small>${escapeHtml(label.length > 28 ? label.slice(0, 26) + "…" : label)}</small></td>`;
+    },
+  },
+  {
+    key: "productPct",
+    label: "% продукта",
+    num: true,
+    filter: "range",
+    group: "tech",
+    get: d => dealTechResearch(d).productRequirementsPct,
+    render(d) {
+      const v = dealTechResearch(d).productRequirementsPct;
+      return `<td class="num">${v != null ? v + "%" : "—"}</td>`;
+    },
+  },
+  {
+    key: "pilotPct",
+    label: "% пилота",
+    num: true,
+    filter: "range",
+    group: "tech",
+    get: d => dealTechResearch(d).pilotRequirementsPct,
+    render(d) {
+      const v = dealTechResearch(d).pilotRequirementsPct;
+      return `<td class="num">${v != null ? v + "%" : "—"}</td>`;
+    },
+  },
+  {
+    key: "tasks",
+    label: "Ключевые задачи",
+    filter: "text",
+    group: "tech",
+    get: d => dealTasksSummary(d),
+    render(d) {
+      const label = dealTasksSummary(d);
+      const full = (dealTechResearch(d).projectTasks || []).join("\n");
+      return `<td title="${escapeHtml(full)}"><small>${escapeHtml(label)}</small></td>`;
+    },
+  },
+  {
+    key: "competitors",
+    label: "Конкуренты",
+    filter: "text",
+    group: "tech",
+    get: d => dealCompetitorsSummary(d),
+    render(d) {
+      const label = dealCompetitorsSummary(d);
+      return `<td title="${escapeHtml(label)}"><small>${escapeHtml(label.length > 30 ? label.slice(0, 28) + "…" : label)}</small></td>`;
+    },
+  },
+  {
+    key: "pains",
+    label: "Боли",
+    filter: "text",
+    group: "tech",
+    get: d => dealPainsPreview(d),
+    render(d) {
+      const label = dealPainsPreview(d);
+      return `<td title="${escapeHtml(d.pains || "")}"><small>${escapeHtml(label)}</small></td>`;
+    },
+  },
+  {
+    key: "riskFlag",
+    label: "Риски",
+    filter: "text",
+    group: "risks",
+    get: d => d.riskFlag || "",
+    render(d) {
+      return `<td><small>${d.riskFlag ? escapeHtml(d.riskFlag) : "—"}</small></td>`;
+    },
+  },
+  {
+    key: "riskComment",
+    label: "Комм. риска",
+    filter: "text",
+    group: "risks",
+    get: d => d.riskComment || "",
+    render(d) {
+      const t = String(d.riskComment || "").trim();
+      const short = t.length > 32 ? t.slice(0, 30) + "…" : (t || "—");
+      return `<td title="${escapeHtml(t)}"><small>${escapeHtml(short)}</small></td>`;
+    },
+  },
+  {
+    key: "lastUpdate",
+    label: "Обновлено",
+    filter: "text",
+    group: "main",
+    get: d => d.lastUpdate || "",
+    render(d) {
+      return `<td><small>${escapeHtml(d.lastUpdate || "—")}${d.daysSince != null ? ` (${d.daysSince} дн.)` : ""}</small></td>`;
+    },
+  },
+  {
+    key: "amoId",
+    label: "ID amoCRM",
+    filter: "text",
+    group: "crm",
+    get: d => d.amoId || "",
+    render(d) {
+      return `<td><small>${escapeHtml(d.amoId || "—")}</small></td>`;
+    },
+  },
+];
+
+const DEALS_COL_GROUPS = [
+  { id: "main", label: "Основное", keys: ["customer", "stage", "owner", "industry", "partner", "taskDue", "lastUpdate"] },
+  { id: "finance", label: "Суммы и бюджет", keys: ["amount", "weighted", "expectedBudget", "partnerDiscount", "clientDiscount", "budgetPeriod", "budgetStatus", "budgetPlanned"] },
+  { id: "scoring", label: "Скоринг", keys: ["score", "category", "manualProb", "commitStatus"] },
+  { id: "tech", label: "Тех. исследование", keys: ["seeking", "productPct", "pilotPct", "tasks", "competitors", "pains"] },
+  { id: "risks", label: "Риски", keys: ["riskFlag", "riskComment"] },
+  { id: "crm", label: "CRM", keys: ["amoId"] },
 ];
 
 const DEALS_COLS_STORAGE_KEY = "itmen_deals_columns_v1";
@@ -374,6 +604,7 @@ function renderMultiselectFilter(col, deals) {
 }
 
 function renderColFilter(col, deals) {
+  if (!col.filter) return "";
   if (col.filter === "multiselect") return renderMultiselectFilter(col, deals);
   if (col.filter === "range") {
     const from = escapeHtml(dealsTableColFilters[col.key + "__from"] || "");
@@ -529,29 +760,50 @@ function clearAllDealsFilters() {
   closeAllMultiselectPanels();
 }
 
+function renderDealsColumnsGroup(group) {
+  const cols = group.keys.map(k => DEALS_TABLE_COLS.find(c => c.key === k)).filter(Boolean);
+  if (!cols.length) return "";
+  return `<section class="deals-col-group">
+    <div class="deals-col-group-head">
+      <h4 class="deals-col-group-title">${escapeHtml(group.label)}</h4>
+      <button type="button" class="btn btn-sm deals-col-group-toggle" data-group="${group.id}">Все</button>
+    </div>
+    <div class="deals-col-group-list">
+      ${cols.map(c => `<label class="deals-col-opt">
+        <input type="checkbox" class="deals-col-cb" value="${c.key}" data-group="${group.id}"${dealsVisibleColKeys.includes(c.key) ? " checked" : ""}>
+        <span class="deals-col-label">${escapeHtml(c.label)}</span>
+      </label>`).join("")}
+    </div>
+  </section>`;
+}
+
 function openDealsColumnsModal() {
   let modal = document.getElementById("deals-columns-modal");
   if (!modal) {
     modal = document.createElement("div");
     modal.id = "deals-columns-modal";
-    modal.className = "modal-overlay";
+    modal.className = "modal-overlay deals-columns-overlay";
     document.body.appendChild(modal);
     modal.addEventListener("click", e => {
       if (e.target === modal) closeDealsColumnsModal();
     });
   }
+  const selectedCount = dealsVisibleColKeys.length;
   modal.innerHTML = `
-    <div class="modal modal-sm">
+    <div class="modal deals-columns-modal" role="dialog" aria-labelledby="deals-columns-title">
       <div class="modal-header">
-        <h3>Колонки таблицы</h3>
+        <div>
+          <h3 id="deals-columns-title">Колонки таблицы</h3>
+          <p class="muted deals-columns-sub">Выбрано: ${selectedCount} · только в вашем браузере</p>
+        </div>
         <button type="button" class="btn btn-sm" onclick="closeDealsColumnsModal()" aria-label="Закрыть">✕</button>
       </div>
-      <div class="modal-body deals-columns-list">
-        <p class="muted" style="font-size:.8rem;margin-bottom:.75rem">Настройка сохраняется только в вашем браузере.</p>
-        ${DEALS_TABLE_COLS.map(c => `<label class="deals-col-opt">
-          <input type="checkbox" class="deals-col-cb" value="${c.key}"${dealsVisibleColKeys.includes(c.key) ? " checked" : ""}>
-          <span>${escapeHtml(c.label)}</span>
-        </label>`).join("")}
+      <div class="deals-columns-toolbar">
+        <button type="button" class="btn btn-sm" id="deals-cols-all">Выбрать все</button>
+        <button type="button" class="btn btn-sm" id="deals-cols-none">Снять все</button>
+      </div>
+      <div class="modal-body deals-columns-body">
+        ${DEALS_COL_GROUPS.map(renderDealsColumnsGroup).join("")}
       </div>
       <div class="deals-columns-footer">
         <button type="button" class="btn btn-sm" id="deals-cols-reset">По умолчанию</button>
@@ -559,6 +811,35 @@ function openDealsColumnsModal() {
       </div>
     </div>`;
   modal.classList.add("open");
+
+  const syncCount = () => {
+    const n = modal.querySelectorAll(".deals-col-cb:checked").length;
+    const sub = modal.querySelector(".deals-columns-sub");
+    if (sub) sub.textContent = `Выбрано: ${n} · только в вашем браузере`;
+  };
+
+  modal.querySelectorAll(".deals-col-cb").forEach(cb => {
+    cb.addEventListener("change", syncCount);
+  });
+
+  modal.querySelector("#deals-cols-all")?.addEventListener("click", () => {
+    modal.querySelectorAll(".deals-col-cb").forEach(cb => { cb.checked = true; });
+    syncCount();
+  });
+  modal.querySelector("#deals-cols-none")?.addEventListener("click", () => {
+    modal.querySelectorAll(".deals-col-cb").forEach(cb => { cb.checked = false; });
+    syncCount();
+  });
+  modal.querySelectorAll(".deals-col-group-toggle").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const gid = btn.dataset.group;
+      const boxes = modal.querySelectorAll(`.deals-col-cb[data-group="${gid}"]`);
+      const allOn = [...boxes].every(cb => cb.checked);
+      boxes.forEach(cb => { cb.checked = !allOn; });
+      btn.textContent = allOn ? "Все" : "Снять";
+      syncCount();
+    });
+  });
   modal.querySelector("#deals-cols-reset")?.addEventListener("click", () => {
     dealsVisibleColKeys = [...DEALS_DEFAULT_VISIBLE_COLS];
     openDealsColumnsModal();
@@ -572,12 +853,13 @@ function closeDealsColumnsModal() {
 
 function applyDealsColumnsSelection() {
   const modal = document.getElementById("deals-columns-modal");
-  const checked = [...(modal?.querySelectorAll(".deals-col-cb:checked") || [])].map(cb => cb.value);
-  if (!checked.length) {
+  const checkedSet = new Set([...(modal?.querySelectorAll(".deals-col-cb:checked") || [])].map(cb => cb.value));
+  if (!checkedSet.size) {
     alert("Должна остаться хотя бы одна колонка");
     return;
   }
-  dealsVisibleColKeys = checked;
+  const ordered = DEALS_COL_GROUPS.flatMap(g => g.keys).filter(k => checkedSet.has(k));
+  dealsVisibleColKeys = ordered.length ? ordered : [...checkedSet];
   persistDealsVisibleCols();
   closeDealsColumnsModal();
   if (!dealsVisibleColKeys.includes(dealsTableSort.key)) {
@@ -673,6 +955,7 @@ function bindDealsTableEvents() {
     }
     const row = e.target.closest("#deals-tbody tr.deals-row-clickable");
     if (row && !e.target.closest(".actions") && !e.target.closest("button")) {
+      if (row.classList.contains("deals-row-loading")) return;
       const realIdx = state.deals.findIndex(x => x.id === row.dataset.id);
       if (realIdx >= 0) openDealModal(realIdx);
     }

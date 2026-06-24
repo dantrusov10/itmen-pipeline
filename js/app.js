@@ -10,6 +10,8 @@ let state = null;
 let editingDealIdx = null;
 let modalSuggestion = null;
 let saveInFlight = null;
+let dealModalOpenToken = 0;
+let dealModalOpening = false;
 let metricsCache = null;
 let activePage = "panel";
 let dashboardFilters = { owner: [], category: [], budgetPeriod: [], stage: [], partner: [], commitStatus: [], budgetStatus: [] };
@@ -405,6 +407,7 @@ function navigate(page, reportSpec) {
     if (reportSpec) applyDealsReportSpec(reportSpec);
     else applyDealsReportSpec(null);
     location.hash = reportSpec ? serializeDealsReportSpec(reportSpec) : "deals";
+    ensureArchitectureLoaded().catch(() => {});
   } else {
     location.hash = page;
   }
@@ -911,39 +914,74 @@ function ensureArchitectureLoaded() {
   return window._archLoadPromise;
 }
 
+function renderDealModalSkeleton() {
+  return `<div class="deal-modal-loader" aria-live="polite">
+    <div class="deal-modal-spinner"></div>
+    <p>Загрузка паспорта сделки…</p>
+    <div class="app-skeleton" style="margin-top:1rem">
+      <div class="sk-line sk-wide"></div>
+      <div class="sk-line"></div>
+      <div class="sk-line"></div>
+      <div class="sk-grid">${"<div class=\"sk-card\"></div>".repeat(3)}</div>
+    </div>
+  </div>`;
+}
+
 function openDealModal(idx) {
-  openDealModalAsync(idx).catch(e => alert(e.message));
+  openDealModalAsync(idx).catch(e => {
+    dealModalOpening = false;
+    alert(e.message || String(e));
+  });
 }
 
 async function openDealModalAsync(idx) {
-  await ensureArchitectureLoaded();
-  editingDealIdx = idx ?? null;
-  let raw = idx != null ? state.deals[idx] : emptyDeal();
-  if (idx != null && raw?.id && needsFullDeal(raw) && window.ITMEN_API?.enabled) {
-    try {
-      const full = await apiLoadDeal(raw.id);
-      if (full) {
-        state.deals[idx] = migrateDeal(full);
-        raw = state.deals[idx];
-        persistStateCache(state);
-      }
-    } catch (e) {
-      console.warn("getDeal:", e);
-    }
-  }
-  const d = migrateDeal(raw);
-  modalSuggestion = suggestScores(d);
-  const hasScores = Object.values(d.scores || {}).some(v => v > 0);
-  if (!hasScores && modalSuggestion) {
-    d.scores = { ...modalSuggestion.scores };
-    d.scoreReasons = { ...modalSuggestion.reasons };
-    d.scores.loyalty = d.scores.loyalty ?? 0;
-    d.scoreReasons.loyalty = "Оценивается только вручную";
-  }
-  const L = state.lists;
-  const isNew = idx == null;
+  if (dealModalOpening) return;
+  dealModalOpening = true;
+  const token = ++dealModalOpenToken;
 
-  document.getElementById("deal-modal").querySelector(".modal-body").innerHTML = `
+  const modal = document.getElementById("deal-modal");
+  const modalTitle = modal?.querySelector(".modal-header h3");
+  if (modalTitle) modalTitle.textContent = idx != null ? "Паспорт сделки" : "Новая сделка";
+  modal?.querySelector(".modal-body")?.replaceChildren();
+  modal.querySelector(".modal-body").innerHTML = renderDealModalSkeleton();
+  modal.classList.add("open");
+
+  try {
+    await ensureArchitectureLoaded();
+    if (token !== dealModalOpenToken) return;
+
+    editingDealIdx = idx ?? null;
+    let raw = idx != null ? state.deals[idx] : emptyDeal();
+    if (idx != null && raw?.id && needsFullDeal(raw) && window.ITMEN_API?.enabled) {
+      try {
+        const full = await apiLoadDeal(raw.id);
+        if (token !== dealModalOpenToken) return;
+        if (full) {
+          state.deals[idx] = migrateDeal(full);
+          raw = state.deals[idx];
+          persistStateCache(state);
+        }
+      } catch (e) {
+        console.warn("getDeal:", e);
+      }
+    }
+    if (token !== dealModalOpenToken) return;
+
+    const d = migrateDeal(raw);
+    modalSuggestion = suggestScores(d);
+    const hasScores = Object.values(d.scores || {}).some(v => v > 0);
+    if (!hasScores && modalSuggestion) {
+      d.scores = { ...modalSuggestion.scores };
+      d.scoreReasons = { ...modalSuggestion.reasons };
+      d.scores.loyalty = d.scores.loyalty ?? 0;
+      d.scoreReasons.loyalty = "Оценивается только вручную";
+    }
+    const L = state.lists;
+    const isNew = idx == null;
+
+    if (token !== dealModalOpenToken) return;
+
+    modal.querySelector(".modal-body").innerHTML = `
     <div class="form-section">
       <div class="form-section-title">Основное</div>
       <div class="form-grid">
@@ -1001,8 +1039,10 @@ async function openDealModalAsync(idx) {
       ${renderScoreSection(d, modalSuggestion)}
     </div>`;
 
-  toggleBudgetPlannedDate();
-  document.getElementById("deal-modal").classList.add("open");
+    toggleBudgetPlannedDate();
+  } finally {
+    if (token === dealModalOpenToken) dealModalOpening = false;
+  }
 }
 
 function updateCommitHint() {
@@ -1188,7 +1228,13 @@ function select(id, options, value, onchange) {
 }
 
 function val(id) { return document.getElementById(id)?.value ?? ""; }
-function closeModal(id) { document.getElementById(id)?.classList.remove("open"); }
+function closeModal(id) {
+  if (id === "deal-modal") {
+    dealModalOpenToken++;
+    dealModalOpening = false;
+  }
+  document.getElementById(id)?.classList.remove("open");
+}
 
 function exportJson() {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
