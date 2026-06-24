@@ -282,6 +282,41 @@ async function loadStateFromServer(opts = {}) {
   return loadStateLocal();
 }
 
+async function bootstrapPipelineFromServer() {
+  showSyncBanner("⟳ Загрузка данных с Google Таблицы…", "sync");
+  const lite = await apiLoadPipeline({ lite: true });
+  if (!lite?.deals?.length) throw new Error("Пустой ответ сервера");
+  const cached = loadStateLocal();
+  const localCount = (cached?.deals || []).length;
+  const serverCount = lite.deals.length;
+  const replaced = shouldReplaceLocalWithServer(cached, lite);
+  if (replaced) clearLocalPipelineCache();
+  state = replaced ? replaceStateFromServer(lite) : mergeLiteState(cached, lite);
+  persistStateCache(state);
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
+  updateDealCountBadge();
+  if (replaced && localCount < serverCount) {
+    showSyncBanner(
+      `✓ Загружено <strong>${serverCount}</strong> сделок с сервера` +
+      (localCount ? ` (в браузере было ${localCount})` : "") +
+      `. <button type="button" class="btn btn-sm" id="force-reload-btn">Полная перезагрузка</button>`,
+      "ok"
+    );
+    document.getElementById("force-reload-btn")?.addEventListener("click", () => forceReloadFromServer());
+    setTimeout(clearSyncBanner, 6000);
+  } else {
+    clearSyncBanner();
+  }
+}
+
+function updateDealCountBadge() {
+  const n = (state?.deals || []).length;
+  const title = document.getElementById("page-title");
+  if (!title) return;
+  const base = PAGES[activePage]?.title || "Пайплайн";
+  title.textContent = `${base} · ${n} сделок`;
+}
+
 async function syncPipelineFromServer() {
   if (!window.ITMEN_API?.enabled) return;
   try {
@@ -298,6 +333,7 @@ async function syncPipelineFromServer() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
     invalidateMetricsCache();
     renderAll();
+    updateDealCountBadge();
     if (replaced) {
       showSyncBanner(
         `✓ Загружено с сервера: ${serverCount} сделок (в браузере было ${localCount}). ` +
@@ -339,6 +375,7 @@ async function forceReloadFromServer() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
     invalidateMetricsCache();
     renderAll();
+    updateDealCountBadge();
     showSyncBanner(`✓ Загружено ${state.deals.length} сделок с сервера`, "ok");
     setTimeout(clearSyncBanner, 4000);
   } catch (e) {
@@ -474,7 +511,7 @@ function navigate(page, reportSpec) {
   document.querySelectorAll(".nav a").forEach(a => a.classList.remove("active"));
   document.getElementById("page-" + activePage)?.classList.add("active");
   document.querySelector(`.nav a[data-page="${activePage}"]`)?.classList.add("active");
-  document.getElementById("page-title").textContent = PAGES[activePage]?.title || activePage;
+  updateDealCountBadge();
   document.body.classList.toggle("page-deals-active", page === "deals");
   document.getElementById("sidebar")?.classList.remove("open");
   if (page === "deals") {
@@ -1339,7 +1376,7 @@ async function importJson(input) {
   input.value = "";
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   renderAppSkeleton();
 
   document.getElementById("nav").innerHTML = Object.entries(PAGES).map(([k, v]) =>
@@ -1360,8 +1397,19 @@ document.addEventListener("DOMContentLoaded", () => {
   if (typeof bindDealsTableEvents === "function") bindDealsTableEvents();
 
   if (window.ITMEN_API?.enabled) {
-    state = loadStateLocal();
-    if (!state?.deals?.length) state = migrateState(structuredClone(window.ITMEN_INITIAL));
+    try {
+      await bootstrapPipelineFromServer();
+    } catch (e) {
+      console.error(e);
+      state = loadStateLocal();
+      showSyncBanner(
+        `⚠ Не удалось загрузить с сервера: ${escapeHtml(e.message || "ошибка")}. ` +
+        `Показана локальная копия (${(state?.deals || []).length} сделок). ` +
+        `<button type="button" class="btn btn-sm" id="force-reload-btn">Загрузить с сервера</button>`,
+        "error"
+      );
+      document.getElementById("force-reload-btn")?.addEventListener("click", () => forceReloadFromServer());
+    }
   } else {
     state = loadStateLocal();
     if (typeof showSetupBanner === "function") showSetupBanner();
@@ -1370,10 +1418,6 @@ document.addEventListener("DOMContentLoaded", () => {
   renderAll();
   const boot = parseLocationHash();
   navigate(boot.page || "panel", boot.spec);
-
-  if (window.ITMEN_API?.enabled) {
-    syncPipelineFromServer();
-  }
 
   window.addEventListener("hashchange", () => {
     const p = parseLocationHash();
@@ -1407,3 +1451,5 @@ window.addTaskRow = addTaskRow;
 window.removeTaskRow = removeTaskRow;
 window.toggleBudgetPlannedDate = toggleBudgetPlannedDate;
 window.refreshModelScores = refreshModelScores;
+window.forceReloadFromServer = forceReloadFromServer;
+window.syncPipelineFromServer = syncPipelineFromServer;

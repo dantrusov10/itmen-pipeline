@@ -80,14 +80,25 @@ function isServerNewer(serverState, localState) {
   return new Date(a).getTime() > new Date(b).getTime();
 }
 
-/** Локальная копия явно устарела (типичный сбой: в браузере 3 сделки, на сервере 200+) */
+/** Локальная копия явно устарела (в браузере 7 сделок, на сервере 218) */
 function shouldReplaceLocalWithServer(localState, serverState) {
   const localCount = (localState?.deals || []).length;
   const serverCount = (serverState?.deals || []).length;
   if (!serverCount) return false;
   if (!localCount) return true;
+  if (serverCount > localCount + 2) return true;
   if (serverCount >= 10 && localCount < serverCount * 0.5) return true;
   return false;
+}
+
+function clearLocalPipelineCache() {
+  try {
+    localStorage.removeItem(PIPELINE_CACHE_KEY);
+    localStorage.removeItem(PIPELINE_CACHE_META);
+    localStorage.removeItem("itmen_pipeline_v1");
+  } catch (e) {
+    console.warn("clearLocalPipelineCache:", e);
+  }
 }
 
 function replaceStateFromServer(serverState) {

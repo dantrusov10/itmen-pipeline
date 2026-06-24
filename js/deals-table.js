@@ -940,6 +940,10 @@ function bindDealsTableEvents() {
       renderDealsFilterBanner();
       return;
     }
+    if (e.target.id === "deals-reload-server") {
+      if (typeof forceReloadFromServer === "function") forceReloadFromServer();
+      return;
+    }
     if (e.target.id === "deals-copy-link") {
       copyDealsReportLink();
       return;
@@ -1042,6 +1046,7 @@ function renderDealsTable(deals) {
       <button type="button" class="btn btn-sm" id="deals-clear-filters">Сбросить фильтры</button>
       <button type="button" class="btn btn-sm" id="deals-columns-btn" title="Настроить видимые колонки">⚙ Колонки</button>
       <button type="button" class="btn btn-sm" id="deals-export-excel" title="Экспорт текущего среза в Excel">⬇️ Excel</button>
+      <button type="button" class="btn btn-sm" id="deals-reload-server" title="Сбросить кэш и загрузить все сделки с сервера">⟳ С сервера</button>
       <button type="button" class="btn btn-sm" id="deals-copy-link" title="Скопировать ссылку с фильтрами">🔗 Поделиться</button>
       <span class="deals-table-meta" id="deals-table-meta"></span>
     </div>
