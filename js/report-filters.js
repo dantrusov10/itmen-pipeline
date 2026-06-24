@@ -1,5 +1,5 @@
 /* Drill-down: дашборд → таблица сделок + шаринг фильтров в URL */
-const PILOT_STAGES = ["Подготовка Пилота", "Пилот", "Пилот Окончен"];
+/* PILOT_STAGES — из calc.js */
 
 let dealsTablePreset = null;
 
