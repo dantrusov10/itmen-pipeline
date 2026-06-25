@@ -1,0 +1,17 @@
+[Unit]
+Description=ITMen Pipeline PocketBase
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/itmen-pipeline
+EnvironmentFile=-/opt/itmen-pipeline/.env
+ExecStart=/opt/itmen-pipeline/pocketbase serve --http=127.0.0.1:8095 --dir=/opt/itmen-pipeline/pb_data --migrationsDir=/opt/itmen-pipeline/pb_migrations
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+# Опционально: запуск через Docker вместо systemd.
+# На сервере сейчас используется systemd (pb-itmen-pipeline.service).
+services:
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: itmen-pipeline-pb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8095:8090"
+    volumes:
+      - ./pb_data:/pb_data
+      - ./pb_migrations:/pb_migrations
+    command:
+      - serve
+      - --http=0.0.0.0:8090
+      - --dir=/pb_data
+      - --migrationsDir=/pb_migrations

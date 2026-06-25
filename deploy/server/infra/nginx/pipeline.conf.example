@@ -1,0 +1,23 @@
+# Замените pipeline.YOUR_DOMAIN на реальный домен.
+# cp → sites-available → ln -s sites-enabled → certbot
+
+server {
+    listen 80;
+    server_name pipeline.YOUR_DOMAIN;
+
+    location / {
+        proxy_pass http://127.0.0.1:8095;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 25m;
+    }
+}
+
+# Статика фронта (когда появится отдельный путь):
+# location /app/ {
+#     alias /opt/itmen-pipeline/frontend/;
+#     try_files $uri $uri/ /app/index.html;
+# }
