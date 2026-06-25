@@ -4,6 +4,8 @@
 
 **Публичная ссылка для менеджеров (рекомендуется):** [DEPLOY_GAS.md](./DEPLOY_GAS.md) — GitHub Pages + Google Таблица + Apps Script, бесплатно.
 
+**Две копии окружения (PROD + STAGING):** [DEPLOY_DUPLICATE.md](./DEPLOY_DUPLICATE.md)
+
 Альтернатива с Node-сервером: [DEPLOY.md](./DEPLOY.md) (Render + MongoDB).
 
 ## Быстрый старт

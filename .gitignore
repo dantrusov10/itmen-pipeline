@@ -8,3 +8,4 @@ amocrm_preview.json
 .DS_Store
 *.log
 Thumbs.db
+tools/env_urls.json

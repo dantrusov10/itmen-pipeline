@@ -1458,6 +1458,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindDashboardEvents();
   if (typeof bindDealsTableEvents === "function") bindDealsTableEvents();
 
+  if (typeof showEnvironmentBanner === "function") showEnvironmentBanner();
+
   if (window.ITMEN_API?.enabled) {
     try {
       await bootstrapPipelineFromServer();

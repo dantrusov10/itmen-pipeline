@@ -124,6 +124,18 @@ function clearSyncBanner() {
   document.getElementById("sync-banner")?.remove();
 }
 
+function showEnvironmentBanner() {
+  const cfg = window.ITMEN_GAS_CONFIG || {};
+  const env = String(cfg.environment || "production").toLowerCase();
+  if (env === "production") return;
+  const label = cfg.label || env.toUpperCase();
+  const pages = cfg.pagesUrl ? ` · <a href="${cfg.pagesUrl}" target="_blank" rel="noopener">${cfg.pagesUrl}</a>` : "";
+  showSyncBanner(
+    `⚠ <strong>${label}</strong> — тестовая копия. Менеджеры работают в PROD.${pages}`,
+    "error"
+  );
+}
+
 function renderAppSkeleton() {
   ["page-panel", "page-deals", "page-scoring"].forEach(id => {
     const el = document.getElementById(id);

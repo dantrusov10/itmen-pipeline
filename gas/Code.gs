@@ -132,6 +132,9 @@ function doPost(e) {
       else PropertiesService.getScriptProperties().deleteProperty('MAINTENANCE_MODE');
       return json_({ ok: true, maintenanceMode: on });
     }
+    if (body.action === 'importEnvironmentClone') {
+      return json_(importEnvironmentClone_(body));
+    }
     if (body.action === 'save') {
       var maint = PropertiesService.getScriptProperties().getProperty('MAINTENANCE_MODE');
       if (maint === '1' && !body.allowMaintenance) {
@@ -963,6 +966,45 @@ function recoverFromAudit_(apply, mode) {
     plan: plan,
     changes: diffRows.length,
     preview: diffRows.slice(0, 40)
+  };
+}
+
+/**
+ * Полная замена state + аудита при клонировании окружения (prod → staging).
+ * Только с allowMaintenance — для скриптов tools/clone_prod_to_staging.py
+ */
+function importEnvironmentClone_(body) {
+  if (!body.allowMaintenance) {
+    return { error: 'importEnvironmentClone требует allowMaintenance (только клонирование окружения)' };
+  }
+  if (!body.state || !Array.isArray(body.state.deals)) {
+    return { error: 'Некорректное state' };
+  }
+  setup();
+  var updatedAt = saveState_(body.state);
+  var auditCopied = 0;
+  if (body.auditRows && body.auditRows.length) {
+    var sh = getAuditSheet_();
+    var last = sh.getLastRow();
+    if (last > 1) sh.deleteRows(2, last - 1);
+    var rows = body.auditRows.map(function (r) {
+      return [
+        String(r[0] || ''), String(r[1] || ''), String(r[2] || ''),
+        String(r[3] || ''), String(r[4] || ''), r[5] || 0,
+        String(r[6] || ''), String(r[7] != null ? r[7] : ''), String(r[8] != null ? r[8] : '')
+      ];
+    });
+    if (rows.length) {
+      sh.getRange(2, 1, rows.length, 9).setValues(rows);
+      auditCopied = rows.length;
+    }
+  }
+  return {
+    ok: true,
+    updatedAt: updatedAt,
+    deals: body.state.deals.length,
+    auditRows: auditCopied,
+    spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()
   };
 }
 

@@ -1,0 +1,14 @@
+{
+  "production": {
+    "gasUrl": "https://script.google.com/macros/s/AKfycbxsKycDe4W8RWlXmSWlQY6CJUnUbBoJxLSsL3uknJLPBgUA84GcrtV1Btlv_7_RCyldIA/exec",
+    "spreadsheetId": "1pN937eK0xg4svGMHCdBfUhr3iAihuDl_fkj8U_XrL2g",
+    "pagesUrl": "https://dantrusov10.github.io/itmen-pipeline/",
+    "github": "https://github.com/dantrusov10/itmen-pipeline"
+  },
+  "staging": {
+    "gasUrl": "PASTE_STAGING_GAS_URL_AFTER_DEPLOY",
+    "spreadsheetId": "",
+    "pagesUrl": "https://dantrusov10.github.io/itmen-pipeline-staging/",
+    "github": "https://github.com/dantrusov10/itmen-pipeline-staging"
+  }
+}
