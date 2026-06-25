@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "collections": [
+    "deals",
+    "pipeline_meta",
+    "managers",
+    "audit_log",
+    "snapshots_daily",
+    "snapshots_deals",
+    "import_log"
+  ],
+  "notes": "deals.payload и pipeline_meta.state_payload — страховка полного JSON"
+}
