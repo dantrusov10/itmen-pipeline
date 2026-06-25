@@ -346,6 +346,13 @@ function weightedAmount(expectedAmount, score, category) {
   return isWeightedDeal(score, category) ? (expectedAmount || 0) : 0;
 }
 
+function sanePct(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return n;
+}
+
 function enrichDeal(deal) {
   const d = migrateDeal(deal);
   const score = calcDealScore(d.scores);
@@ -362,8 +369,8 @@ function enrichDeal(deal) {
     ...d, score, computedProb, prob, category, daysSince, daysTo, quality, riskFlag, weighted,
     expectedAmount,
     commitLabel: commitLabel(d.commitStatus),
-    projectCompliancePct: d.techResearch?.productRequirementsPct,
-    pilotCompliancePct: d.techResearch?.pilotRequirementsPct,
+    projectCompliancePct: sanePct(d.techResearch?.productRequirementsPct),
+    pilotCompliancePct: sanePct(d.techResearch?.pilotRequirementsPct),
   };
 }
 
